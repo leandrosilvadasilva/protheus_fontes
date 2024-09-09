@@ -1,0 +1,1264 @@
+#INCLUDE "TOTVS.CH"
+#INCLUDE "RESTFUL.CH"
+#INCLUDE 'FWMVCDef.CH'
+
+#DEFINE HML		"2"
+#DEFINE PRD		"1"
+
+#DEFINE ENTER   CHR(10)+cHR(13)
+
+
+/*
+    TODO
+    [ ] - Como vou saber qual nota já foi integrada no LINX ?
+         - como é o retorno deles
+    [ ] - 
+
+
+*/
+
+User Function MA_21_WSLNX()
+	RpcSetType(3)
+	RpcSetEnv("01","0101",,,"FAT")
+
+	U_MAWSLX21()
+
+	RpcClearEnv()
+Return
+
+User Function MAWSLX21()
+Local lRetorno    := .T.
+Local oLinx       := FATBCAIntegracaoLinx():New()
+
+Local lIsBlind    := IsBlind()
+Local cLockName   := ProcName() + FWCodFil()
+Local cDesc       := "Integração ERP x Linx - Atualização dados pedidos para o LINX"
+Local cPerg       := ""
+Local aInfoCustom := {}
+Local cTxt        := ""
+Local nTimeIni    := 0
+Local oProcess    := NIL
+
+Local lLogCV8     := SuperGetMV( "MA_LNXCV8", .F., .F. )
+
+    TMSLogMSg( "INFO", "MAWSLNX21 -  Iniciando Integração Atualização dados pedidos para o LINX - LINX -  Empresa:" + FWGrpCompany() )
+    
+	BEGIN SEQUENCE
+    
+        If oLinx:Requisitos()  .and.  oLinx:Conectado()
+
+            // Controle de semaforo pra não rodar por mais de um usuario
+            If !LockByName( cLockName,.F.,.F.,.T. ) .and.  __CUSERID <> "000416"
+
+                If !lIsBlind
+
+                    cTxt := Iif( !lIsBlind, "por outro usuário", "pelo schedule" )
+                    FWAlertInfo( "Rotina está sendo processada " + cTxt + "  -  " + cLockName )
+                Else
+
+                    TMSLogMSg("INFO", "Rotina está sendo processada por outro usuário - " + cLockName )
+                Endif
+                Break
+            EndIf
+
+            // Se não estiver rodando pelo  SCHEDULE
+            if !lIsBlind .AND. !FwIsInCallStack("U_MAWSLNX90")
+
+                nTimeIni := Time()
+                oProcess := tNewProcess():New( 'U_MAWSLNX21', cDesc, {|oSelf| fProcPrdRun(oSelf) }, cDesc, cPerg, aInfoCustom,,, cDesc,.T.,.T. )
+                FWAlertInfo( "Tempo de Duração " + ElapTime(nTimeIni, Time()) )
+            else
+
+                fProcPrdRun()
+            endif
+
+            UnLockByName( cLockName,.F.,.F.,.T. )
+        Else
+            
+            FWAlertError( "Plataforma de Integração Inaativa" )
+        EndIf
+
+	END SEQUENCE
+    
+
+    oLinx:Destroy()
+    FWFreeObj( oLinx )    
+    FWFreeObj( oProcess )       
+    TMSLogMSg( "INFO", "MAWSLNX21 -  Finalizando Integração Atualização dados pedidos para o LINX - LINX -  Empresa:" + FWGrpCompany() )
+
+Return lRetorno
+
+
+/*/{Protheus.doc} fProcPrdRun
+    
+    Integração de dados do pedido de venda para o LINX
+
+    @type  Static Function
+    @author user
+    @since date
+    @version version
+    @param param, param_type, param_descr
+    @return return, return_type, return_description
+    @example
+    (examples)
+    @see (links_or_references)
+    /*/
+Static Function fProcPrdRun( oProcess )
+Local lRetorno := .T. AS BOLLEAN
+Local aDadosMotas := {} AS ARRAY
+
+    If NotaAutorizada( @aDados )
+
+        If MonstaJsonEnvio()
+
+            If EnviaLINX()
+
+                // 
+
+
+                // Integrou com sucesso,  grava no ERP pra não enviar novamente
+                AtualizaERP()
+
+
+                oLinx:GravaLog( cIdInteg, cDataEnv, cHorEnv, cDataRec, cHorRec, cJsonEnv, cRetorno, cTabela, nRecno, ;
+                                cURLBase + cPath, "POST", FunName(), lError, cHTTPCode, cErrorMessage )
+                FwAlertInfo( "" + ENTER + "Verifique tabela de LOG" )
+            Else
+
+                oLinx:GravaLog( cIdInteg, cDataEnv, cHorEnv, cDataRec, cHorRec, cJsonEnv, cRetorno, cTabela, nRecno, ;
+                                cURLBase + cPath, "POST", FunName(), lError, cHTTPCode, cErrorMessage )
+                FwAlertInfo( "" + ENTER + "Verifique tabela de LOG" )
+            EndIf
+        Else
+
+
+            // 
+
+            oLinx:GravaLog( cIdInteg, cDataEnv, cHorEnv, cDataRec, cHorRec, cJsonEnv, cRetorno, cTabela, nRecno, ;
+                            cURLBase + cPath, "POST", FunName(), lError, cHTTPCode, cErrorMessage )
+            FwAlertInfo( "JSON de envio não foi possivel conversão" + ENTER + "Verifique tabela de LOG" )
+        EndIf
+    Else
+
+        oLinx:GravaLog( cIdInteg, cDataEnv, cHorEnv, cDataRec, cHorRec, cJsonEnv, cRetorno, cTabela, nRecno, ;
+                        cURLBase + cPath, "POST", FunName(), lError, cHTTPCode, cErrorMessage )
+        FwAlertInfo( "" + ENTER + "Verifique tabela de LOG" )
+    EndIf
+
+Return lRetorno
+
+/*
+    Verifica se a nota realmetne foi autorizada com sucesso
+*/
+Static Function NotaAutorizada( aDadosMotas )
+Local lRetorno  := .T.                                           AS BOOLEAN
+Local cAliasSF3 := GetNextAlias()                                AS CHAR
+Local cQuery    := ""                                            AS CHAR
+Local nQtdReg   := 0                                             AS NUMERIC
+Local cJoin     := "%" + FWJoinFilial( "SF3", "SFT, SC5" ) + "%" AS CHAR
+
+    BEGINSQL Alias cAliasSF3
+
+        SELECT SF3.*, SFT.*, SC5.*
+          FROM %table:SF3% SFT
+         INNER JOIN  %Table:SFT% SFT ON SF3.* = SFT.*
+         INNER JOIN  %Table:SC5% SC5 ON SF3.* = SC5.*
+               %exp:cJoin%
+         WHERE 1=1
+           AND SFT.%NotDel% AND SFT.%NotDel% AND SC5.%NotDel%
+           AND 1=1
+
+    ENDSQL
+
+	cQuery := GetLastQuery()[2]	
+	count to nQtdReg
+    (cAliasSYD)->(dbGoTop())
+
+    If nQtdReg > 0
+
+
+    Else
+
+        lRtorno := .F.
+    EndIf
+
+
+FWRestArea( aArea )
+Return lRetorno
+
+/*
+    Monta JSON pra envio 
+*/
+Static Function MonstaJsonEnvio( aDadosMotas )
+Local lRetorno  := .T. AS BOOLEAN
+Local jJson     := JsonObject():New() AS OBJECT
+Local jInvoice  := JsonObject():New() AS OBJECT
+Local jShipment := JsonObject():New() AS OBJECT
+Local cJsonEnv  := "" AS CHAR
+
+    jJson[ 'OrderID' ]                  := ""
+    jJson[ 'OrderNumber' ]              := aDadosMotas[ 1 ]
+    jJson[ 'WorkflowType' ]             := ""                       // Identificação do fluxo a ser executado.
+    jJson[ 'ValidateCompleteWorkflow' ] := .F.
+
+    // -- Invoice
+    jInvoice[ 'OrderInvoiceID' ]        := ""
+    jInvoice[ 'FulfillmentID' ]         := ""
+    jInvoice[ 'Code' ]                  := aDadosMotas[ 2 ]
+    jInvoice[ 'Url' ]                   := aDadosMotas[ 3 ]         // URL de acesso à nota fiscal.
+    jInvoice[ 'IsIssued' ]              := .T.
+    jInvoice[ 'Series' ]                := aDadosMotas[ 4 ]
+    jInvoice[ 'Number' ]                := aDadosMotas[ 5 ]
+    jInvoice[ 'CFOP' ]                  := aDadosMotas[ 6 ]         // Código fiscal de operações e prestações.  Dá nota ?????? - é Opcional
+    jInvoice[ 'XML' ]                   := ""                       // XML da nota fiscal.   
+    jInvoice[ 'InvoicePdf' ]            := ""
+    jInvoice[ 'Observation' ]           := ""
+    jInvoice[ 'Operation' ]             := aDadosMotas[ 7 ]         // Descrição do CFOP.  Dá nota ?????? - é Opcional
+    jInvoice[ 'ProcessedAt' ]           := aDadosMotas[ 8 ]         // Data de processamento da Nota Fiscal
+    jInvoice[ 'UpdatedAt' ]             := aDadosMotas[ 8 ]         // Data de atualização da Nota Fiscal
+    jInvoice[ 'IssuedAt' ]              := aDadosMotas[ 9 ]         // Data de emissão da Nota Fiscal
+    jInvoice[ 'CreatedAt' ]             := aDadosMotas[ 8 ]         // Data de criação da Nota Fiscal
+    jInvoice[ 'ID' ]                    := aDadosMotas[ 10 ]        // Identificador da Nota Fiscal no sistema de origem.  ChaveUnica completa
+
+    jJson[ 'Invoice' ]                  := jInvoice
+
+    // -- Shipment
+
+    jShipment[ 'TrackingNumber' ]       := ""
+    jShipment[ 'TrackingUrl' ]          := ""
+
+    jJson[ 'Invoice' ]                  := jShipment
+
+    // -- 
+    cJsonEnv := jJson:ToJson()   
+
+    If Vazio( cJsonEnv )
+
+        lRetorno := .F.
+    EndIf
+
+    FreeObj( jShipment )
+    FreeObj( jInvoice )
+    FreeObj( jJson )
+
+FWRestArea( aArea )
+Return lRetorno
+
+/*
+    Monta JSON pra envio 
+*/
+Static Function EnviaLINX()
+Return lRetorno := .T.
+
+FWRestArea( aArea )
+Return lRetorno
+
+/*
+    atualiza o ERP infornado que a nota foi atualizada com sucesso
+*/
+Static Function AtualizaERP()
+Return lRetorno := .T.
+
+FWRestArea( aArea )
+Return lRetorno
+
+
+	If SuperGetMv( "MA_LNXAMB", .F., HML ) == HML
+
+        oJson[ 'QueueID' ]       := 17
+    Else
+        
+        oJson[ 'QueueID' ]       := 17
+    EndIf
+    oJson[ 'QueueAlias' ]    := "erp-queue"
+    oJson[ 'Attempts' ]      := 0
+    oJson[ 'Where' ]         := ""
+    oJson[ 'WhereMetadata' ] := ""
+    oJson[ 'OrderBy' ]       := ""
+
+    // -- oPage
+    oPage                    := JsonObject():New()
+    oPage[ "PageIndex" ]     := 0
+    oPage[ "PageSize" ]      := 1000
+    oJson[ 'Page' ]          := oPage
+
+    // -- 
+    cJsonEnv := oJson:ToJson()   
+
+
+FWFreeObj( oJson )
+FWFreeObj( oPage )
+FWRestArea( aArea )
+Return lRetorno
+
+/*/{Protheus.doc} nomeStaticFunction
+    (long_description)
+    @type  Static Function
+    @author user
+    @since date
+    @version version
+    @param param, param_type, param_descr
+    @return return, return_type, return_description
+    @example
+    (examples)
+    @see (links_or_references)
+    /*/
+Static Function FilaIntegracao( cJsonEnv )
+Local oRestClient     := NIL
+Local cError          := ""
+Local cRetorno        := ""
+Local nStatus         := 0
+Local lRetorno        := .T.
+Local cHTTPError      := ""
+Local llChkStatusCode := .T.
+Local cHTTPCode       := ""
+Local oJson           := JsonObject()          :New()
+
+Local oLinx           := FATBCAIntegracaoLinx():New()
+Local aHeader         := oLinx:aHeadStr
+Local cURLBase        := oLinx:cURLBase
+Local cPath           := "/Queue/API.svc/web/SearchQueueItems
+
+Local nCntFor         := 0
+
+// Variaveis para o  GravaLOG
+Local cDataEnv        := Date()
+Local cHorEnv         := Time() // FWTimeStamp(5)
+Local cDataRec        := ""
+Local cHorRec         := ""
+Local cJsonRec        := ""
+Local cTabela         := "FIL"
+Local nRecno          := 0
+Local cIdInteg        := ""
+
+
+    oRestClient := FWRest():New(cURLBase)
+    oRestClient:SetPath(cPath)
+    oRestClient:SetChkStatus(.F.)
+
+    oRestClient:SetPostParams(cJsonEnv) 
+
+    cDataRec        := Date()
+    cHorRec         := Time() // FWTimeStamp(5)
+    
+    lSucess         := oRestClient:Post(aHeader)
+    cRetorno        := oRestClient:GetResult()
+    cError          := oRestClient:GetLastError()
+    llChkStatusCode := oRestClient:GetChkStatus()
+    cHTTPCode       := oRestClient:GetHTTPCode()
+    nStatus         := HTTPGetStatus(@cHTTPError)
+
+    do case
+    case nStatus >= 200  .and.  nStatus <= 299
+
+        // FwAlertWarning( cHTTPCode )
+        cRetorno := DecodeUTF8(oRestClient:getResult(), "cp1252")
+        cJsonRec := oJson:FromJson(cRetorno)
+
+        If cJsonRec == NIL
+
+            nError        := Len( oJson:GetJsonObject( 'Errors' ) )
+            lError        := oJson:GetJsonObject( 'IsValid' )
+            nQtdPV        := Len( oJson:GetJsonObject( 'Result' ) )
+            nQtdPedVenda  := Val( DecodeUTF8( oJson:GetJsonObject( 'Page' ):GetJsonText( 'RecordCount' ), "cp1252" ) )
+            cErrorMessage := DecodeUTF8( oJson:GetJsonObject( 'Page' ):GetJsonText( 'ErrorMessage' ), "cp1252" )
+
+            If lError  .and.  nQtdPedVenda  >  0
+
+                /*
+                    cIdInteg      = ALIAS_CHAVE_INTEGRACAO
+                    cDataEnv      = ALIAS_DATA_HORA_ENVIO
+                    cHorEnv       = ALIAS_DATA_HORA_ENVIO
+                    cDataRec      = ALIAS_DATA_HORA_RECEBIMENTO
+                    cHorRec       = ALIAS_DATA_HORA_RECEBIMENTO
+                    cJsonEnv      = ALIAS_JSON_ENVIO
+                    cJsonRec      = ALIAS_JSON_RECEBIMENTO
+                    cTabela       = ALIAS_TABELA_ENTIDADE
+                    nRecno        = ALIAS_RECNO
+                    cHTTPCode     = ALIAS_STATUS_HTTP
+                    cErrorMessage = ALIAS_ERROR
+                */
+
+                oLinx:GravaLog( cIdInteg, cDataEnv, cHorEnv, cDataRec, cHorRec, cJsonEnv, cRetorno, cTabela, nRecno, ;
+                                cURLBase + cPath, "POST", FunName(), lError, cHTTPCode, cErrorMessage )
+
+                For nCntFor = 1 to nQtdPV
+
+                    cEntityKeyName := DecodeUTF8( oJson:GetJsonObject( 'Result' )[nCntFor]:GetJsonText( 'EntityKeyName' ), "cp1252" )
+                    lOperation     := oJson:GetJsonObject( 'Result' )[nCntFor]:GetJsonText( 'Operation' )  ==  OPERATION_UPDATE
+
+                    If cEntityKeyName == "OrderNumber"  .and.  lOperation
+
+                        cEntityKeyValue := DecodeUTF8( oJson:GetJsonObject( 'Result' )[nCntFor]:GetJsonText( 'EntityKeyValue' ), "cp1252" )
+                        cQueueItemID    := DecodeUTF8( oJson:GetJsonObject( 'Result' )[nCntFor]:GetJsonText( 'QueueItemID' ), "cp1252" )
+
+                        FWMsgRun(, {|oSay| LNXWSOrder( cEntityKeyValue ) }, "Aguarde", "Consultando a Fila de Integração......")
+                    EndIf
+                Next nCntFor
+            ElseIf nQtdPedVenda  ==  0
+
+                FwAlertInfo( "Retorno da Plataforma informa que não tem nenhum pedido a ser integrado!" + ENTER + "Verifique o Monitor de Filas" )
+            Else
+
+                FwAlertWarning( cErrorMessage )
+            EndIf
+        Else
+
+            FWAlertError( "JSON Errado")
+        EndIf
+    case nStatus >= 300  .and.  nStatus <= 399
+
+        FwAlertWarning( cHTTPCode )
+    case nStatus >= 400  .and.  nStatus <= 499            
+
+        FwAlertWarning( cHTTPCode )
+    case nStatus >= 500  .and.  nStatus <= 599
+
+        FwAlertWarning( cHTTPCode )
+    end case
+
+    FWFreeObj( oLinx )    
+    FreeObj(oJson)
+    FreeObj(oRestClient)
+Return lRetorno
+
+
+/*/{Protheus.doc} LNXWSOrder
+    (long_description)
+    @type  Static Function
+    @author user
+    @since date
+    @version version
+    @param param, param_type, param_descr
+    @return return, return_type, return_description
+    @example
+    (examples)
+    @see (links_or_references)
+/*/
+Static Function LNXWSOrder( cNumPedVendaLinx )
+Local lRetorno := .T.
+Local oRestClient     := NIL
+Local cError          := ""
+Local cRetorno        := ""
+Local nStatus         := 0
+
+Local cHTTPError      := ""
+Local llChkStatusCode := .T.
+Local cHTTPCode       := ""
+Local oJson           := JsonObject():New()
+
+Local oLinx           := FATBCAIntegracaoLinx():New()
+Local aHeader         := oLinx:aHeadStr
+Local cURLBase        := oLinx:cURLBase
+Local cPath           := "/Sales/API.svc/web/GetOrderByNumber"
+
+Local JaExisteSA1 := .F.
+
+Local cCodCli     := ""
+Local cLojaCli    := ""
+
+// Variaveis para o  GravaLOG
+Local cDataEnv        := Date()
+Local cHorEnv         := Time() // FWTimeStamp(5)
+Local cDataRec        := ""
+Local cHorRec         := ""
+Local cJsonRec        := ""
+Local cTabela         := "PED"
+Local nRecno          := 0
+Local cIdInteg        := ""
+
+Local lOkCliente      := .T.
+
+    oRestClient := FWRest():New(cURLBase)
+    oRestClient:SetPath(cPath)
+    oRestClient:SetChkStatus(.F.)
+
+    oRestClient:SetPostParams( cNumPedVendaLinx ) 
+
+    cDataRec        := Date()
+    cHorRec         := Time() // FWTimeStamp(5)
+
+    lSucess         := oRestClient:Post(aHeader)
+    cRetorno        := oRestClient:GetResult()
+    cError          := oRestClient:GetLastError()
+    llChkStatusCode := oRestClient:GetChkStatus()
+    cHTTPCode       := oRestClient:GetHTTPCode()
+    nStatus         := HTTPGetStatus(@cHTTPError)
+
+    do case
+    case nStatus >= 200  .and.  nStatus <= 299
+
+        // FwAlertWarning( cHTTPCode )
+        cRetorno := DecodeUTF8(oRestClient:getResult(), "cp1252")
+        cJsonRec := oJson:FromJson(cRetorno)
+
+        If cJsonRec == NIL
+
+            cPaymentStatus := oJson:GetJsonObject( 'PaymentStatus' ) 
+            cStatusIDOrder := oJson:GetJsonObject( 'OrderStatusID' )
+            cIDOrder       := oJson:GetJsonObject( 'OrderID' )
+            cCountItems    := oJson:GetJsonObject( 'ItemsCount' )
+            nItems         := Len( oJson:GetJsonObject( 'Items' ) )
+            cIDCustomer    := oJson:GetJsonObject( 'CustomerID' )
+
+            cSA1ChaveUnica := ""
+            If oJson:GetJsonObject( 'CustomerType' ) == PESSOA_JURIDICA
+
+                cSA1ChaveUnica := oJson:GetJsonObject( 'CustomerCNPJ' )
+            ElseIf oJson:GetJsonObject( 'CustomerType' ) == PESSOA_FISICA
+
+                cSA1ChaveUnica := oJson:GetJsonObject( 'CustomerCPF' )
+            EndIf
+
+            cNumber        := oJson:GetJsonObject( 'OrderInvoice' ):GetJsonText( 'Number' )
+            cCode          := oJson:GetJsonObject( 'OrderInvoice' ):GetJsonText( 'Code' )
+
+            If AllTrim(cNumber) <> 'null'  .and.  AllTrim(cCode) == 'null'
+
+                FWAlertInfo("Pedido ja emitido nota fiscal: " + cNumber )
+            ElseIf AllTrim(cNumber) <> 'null'  .and.  AllTrim(cCode) <> 'null' 
+
+                FWAlertInfo("Pedido ja emitido nota fiscal e com a Chave NFe: " + cNumber + " / " + cCode )
+            ElseIf cPaymentStatus <> PAGAMENTO_APROVADO
+
+                FWAlertInfo("Pedido não está com o status de  PAGAMENTO  PAGO" + ENTER + ENTER + "Status: " + cValToChar(cPaymentStatus) )
+            ElseIf lError  
+
+                // FWAlertInfo( "Integração com sucesso" )
+                /*
+                    cIdInteg      = ALIAS_CHAVE_INTEGRACAO
+                    cDataEnv      = ALIAS_DATA_HORA_ENVIO
+                    cHorEnv       = ALIAS_DATA_HORA_ENVIO
+                    cDataRec      = ALIAS_DATA_HORA_RECEBIMENTO
+                    cHorRec       = ALIAS_DATA_HORA_RECEBIMENTO
+                    cJsonEnv      = ALIAS_JSON_ENVIO
+                    cJsonRec      = ALIAS_JSON_RECEBIMENTO
+                    cTabela       = ALIAS_TABELA_ENTIDADE
+                    nRecno        = ALIAS_RECNO
+                    cHTTPCode     = ALIAS_STATUS_HTTP
+                    cErrorMessage = ALIAS_ERROR
+                */
+
+                cJsonEnv := cNumPedVendaLinx
+                oLinx:GravaLog( cIdInteg, cDataEnv, cHorEnv, cDataRec, cHorRec, cJsonEnv, cRetorno, cTabela, nRecno, ;
+                                cURLBase + cPath, "POST", FunName(), lError, cHTTPCode, cErrorMessage )                
+
+                lOkGravaSA1     := .F.
+                cCodCli         := ""
+                cLojaCli        := ""
+                lBloqueado      := .F.
+                FWMsgRun(, {|oSay| lOkCliente := MyCRMA980ExeAuto( cIDCustomer, cSA1ChaveUnica, @JaExisteSA1, @cCodCli, @cLojaCli, @lBloqueado ) }, "Aguarde", "Incluindo o cliente......")
+                
+
+                // Se o clinte existe na base mas estiver bloqueado
+                If JaExisteSA1  .and.  lBloqueado
+
+                    FWAlertInfo("BLOQEUADO")
+                    FWAlertInfo("Pedido não sera integrado")
+                Else 
+
+                    // senão,  ou ja vai estar incluido ou  será incluido em tempo de execução
+                    If lOkCliente
+
+                        FWMsgRun(, {|oSay| MyMATA410ExeAuto( oJson, cCodCli, cLojaCli, nItems ) }, "Aguarde", "Incluindo o pedido de venda......")
+                    Else
+
+                        FwAlertWarning( "Pedido não incluido devido a ocorrencia informada pelo cadastro do cliente" )
+                    EndIf
+                EndIf
+            Else
+
+                FwAlertWarning( cErrorMessage )
+            EndIf
+        Else
+
+            FWAlertError( "JSON Errado")
+        EndIf
+    case nStatus >= 300  .and.  nStatus <= 399
+
+        FwAlertWarning( cHTTPCode )
+    case nStatus >= 400  .and.  nStatus <= 499            
+
+        FwAlertWarning( cHTTPCode )
+    case nStatus >= 500  .and.  nStatus <= 599
+
+        FwAlertWarning( cHTTPCode )
+    end case
+
+    FWFreeObj(oLinx)    
+    FreeObj(oJson)
+    FreeObj(oRestClient)
+
+Return lRetorno
+
+/*/{Protheus.doc} MyCRMA980ExeAuto
+    (long_description)
+    @type  Static Function
+    @author user
+    @since date
+    @version version
+    @param param, param_type, param_descr
+    @return return, return_type, return_description
+    @example
+    (examples)
+    @see (links_or_references)
+/*/
+Static Function MyCRMA980ExeAuto( cIDCustomer, cSA1ChaveUnica, JaExisteSA1, cCodCli, cLojaCli, lBloqueado ) 
+Local lRetorno        := .F.
+Local oRestClient     := NIL
+Local cError          := ""
+Local cRetorno        := ""
+Local nStatus         := 0
+
+Local cHTTPError      := ""
+Local llChkStatusCode := .T.
+Local cHTTPCode       := ""
+Local oJson           := JsonObject():New()
+
+Local oLinx           := FATBCAIntegracaoLinx():New()
+Local aHeader         := oLinx:aHeadStr
+Local cURLBase        := oLinx:cURLBase
+Local cPath           := "/Profile/API.svc/web/GetCustomer"
+
+Local aSA1Auto := {}
+Local nOpcAuto := 3  //MODEL_OPERATION_INSERT
+
+// Variaveis para o  GravaLOG
+Local cDataEnv        := Date()
+Local cHorEnv         := Time() // FWTimeStamp(5)
+Local cDataRec        := ""
+Local cHorRec         := ""
+Local cJsonRec        := ""
+Local cTabela         := "CLI"
+Local nRecno          := 0
+Local cIdInteg        := ""
+Local cLogExecAuto    := ""
+
+Local oJsonCellPhone := JsonObject():New()
+
+Private lMsErroAuto := .F.
+
+    If ClienteJaExiste( cSA1ChaveUnica, @cCodCli, @cLojaCli, lBloqueado )
+
+        JaExisteSA1 := .T.
+        lRetorno    := .T.
+
+        cDataRec        := Date()
+        cHorRec         := Time() // FWTimeStamp(5)
+        cJsonEnv := ""
+        cJsonRec := "" 
+        cTabela := "SA1"              
+    Else
+    
+        oRestClient := FWRest():New(cURLBase)
+        oRestClient:SetPath(cPath)
+        oRestClient:SetChkStatus(.F.)
+
+        oRestClient:SetPostParams( cValToChar( cIDCustomer ) ) 
+
+        cDataRec        := Date()
+        cHorRec         := Time() // FWTimeStamp(5)        
+
+        lSucess         := oRestClient:Post(aHeader)
+        cRetorno        := oRestClient:GetResult()
+        cError          := oRestClient:GetLastError()
+        llChkStatusCode := oRestClient:GetChkStatus()
+        cHTTPCode       := oRestClient:GetHTTPCode()
+        nStatus         := HTTPGetStatus(@cHTTPError)
+
+        do case
+        case nStatus >= 200  .and.  nStatus <= 299
+
+            // FwAlertWarning( cHTTPCode )
+            cRetorno := DecodeUTF8(oRestClient:getResult(), "cp1252")
+            cJsonRec := oJson:FromJson(cRetorno)
+
+            If cJsonRec == NIL
+            
+                aSA1Auto := {}
+
+                cName             := oJson:GetJsonObject( 'Name' )
+                cEMail            := oJson:GetJsonObject( 'Email' )
+                cStatusIdCustomer := oJson:GetJsonObject( 'CustomerStatusID' )
+                cTypeCustomer     := oJson:GetJsonObject( 'CustomerType' )
+                cLineAddress      := oJson:GetJsonObject( 'Address' )[1]:GetJsonText( 'AddressLine' )
+                cCity             := oJson:GetJsonObject( 'Address' )[1]:GetJsonText( 'City' )
+                cComplem          := oJson:GetJsonObject( 'Address' )[1]:GetJsonText( 'Name' )
+                cNeighBourHood    := oJson:GetJsonObject( 'Address' )[1]:GetJsonText( 'Neighbourhood' )
+                cNumber           := oJson:GetJsonObject( 'Address' )[1]:GetJsonText( 'Number' )
+                cPostalCode       := oJson:GetJsonObject( 'Address' )[1]:GetJsonText( 'PostalCode' )
+                cState            := oJson:GetJsonObject( 'Address' )[1]:GetJsonText( 'State' )
+
+                // o campo  Contact  no  JSON  é do tipo  Objeto JSON  quando chega aqui :-)
+                //oJsonCellPhone   := oJson:GetJsonObject( 'Contact' ):ToJson()                
+                oJsonCellPhone:FromJson( ( oJson:GetJsonObject( 'Contact' ):ToJson() ) )
+                cCellPhone        := oJsonCellPhone:GetJsonText( 'CellPhone' )
+
+                /*
+                nQtdEndereço      := Len( oJson:GetJsonObject( 'Address' ) )
+
+                For nCntFor = 1 to Len( nQtdEndereço ) 
+
+                    cLineAddress      := oJson:GetJsonObject( 'Address' )[nCntFor ]:GetJsonText( 'AddressLine' )
+                    cCity             := oJson:GetJsonObject( 'Address' )[nCntFor1]:GetJsonText( 'City' )
+                    cComplem          := oJson:GetJsonObject( 'Address' )[nCntFor1]:GetJsonText( 'Name' )
+                    cNeighBourHood    := oJson:GetJsonObject( 'Address' )[nCntFor1]:GetJsonText( 'Neighbourhood' )
+                    cNumber           := oJson:GetJsonObject( 'Address' )[nCntFor1]:GetJsonText( 'Number' )
+                    cPostalCode       := oJson:GetJsonObject( 'Address' )[nCntFor1]:GetJsonText( 'PostalCode' )
+                    cState            := oJson:GetJsonObject( 'Address' )[nCntFor1]:GetJsonText( 'State' )
+
+                    cAddressType      := oJson:GetJsonObject( 'Address' )[nCntFor1]:GetJsonText( 'AddressType' )
+
+                    If cAddressType == ENDERECO_COBRANCA
+
+                        aAdd(aSA1Auto,{"A1_ENDENT", cLineAddress + ", " + cNumber , NIL})
+                        aAdd(aSA1Auto,{"A1_CEPC"  , cPostalCode                   , NIL})
+                        aAdd(aSA1Auto,{"A1_ESTE"  , cState                        , NIL})
+                        aAdd(aSA1Auto,{"A1_MUNC"  , cCity                         , NIL})
+                    ElseIf cAddressType == ENDERECO_ENTREGA
+
+                        aAdd(aSA1Auto,{"A1_ENDCOB", cLineAddress + ", " + cNumber , NIL})
+                        aAdd(aSA1Auto,{"A1_CEPE"  , cPostalCode                   , NIL})
+                        aAdd(aSA1Auto,{"A1_ESTE"  , cState                        , NIL})
+                        aAdd(aSA1Auto,{"A1_MUNE"  , cCity                         , NIL})
+                    EndIf
+                Next nCntFor
+                */
+
+                // ValidaConteudoVariaveisExecAuto()
+
+                If lError
+
+                    // FWAlertInfo( "Integração com sucesso" )
+
+                    cTipoPessoa := ""
+                    If cTypeCustomer == TIPO_PESSOA_JURIDICA
+
+                        cTipoPessoa := "J"
+                    ElseIf cTypeCustomer == TIPO_PESSOA_FISICA
+
+                        cTipoPessoa := "F"
+                    EndIf
+                    
+                    cCity    := Upper( AllTrim( NoAcento( cCity ) ) )
+                    cCodMun  := GetAdvFVal( "CC2", "CC2_CODMUN", FWxFilial("CC2") + cState + cCity, 4, "" )
+                    
+                    // Pelo alinhado vamos utilizar a condição de pagamento pelo pedido de veda
+                    // cCondPagto := "007"
+
+                    // Pelo alinhado vamos utilizar a natureza financeira pelo pedido de venda
+                    //cNaturFinan := "111101"
+
+                    //aAdd(aSA1Auto,{"A1_COD" , ,Nil})
+                    aAdd(aSA1Auto,{"A1_LOJA"   , "0001"          , NIL})
+                    aAdd(aSA1Auto,{"A1_NOME"   , cName           , NIL})
+                    aAdd(aSA1Auto,{"A1_NREDUZ" , cName           , NIL}) 
+                    aAdd(aSA1Auto,{"A1_TIPO"   , "F"             , NIL})
+                    aAdd(aSA1Auto,{"A1_END"    , cLineAddres     , NIL}) 
+                    aAdd(aSA1Auto,{"A1_BAIRRO" , cNeighBourHood  , NIL}) 
+                    aAdd(aSA1Auto,{"A1_EST"    , cState          , NIL}) 
+                    aAdd(aSA1Auto,{"A1_MUN"    , cCity           , NIL}) 
+                    aAdd(aSA1Auto,{"A1_COD_MUN", cCodMun         , NIL}) 
+                    aAdd(aSA1Auto,{"A1_INSCR"  , "ISENTO"        , NIL}) 
+                    aAdd(aSA1Auto,{"A1_EMAIL"  , cEMail          , NIL}) 
+                    aAdd(aSA1Auto,{"A1_PESSOA" , cTipoPessoa     , NIL}) 
+                    aAdd(aSA1Auto,{"A1_CGC"    , cSA1ChaveUna    , NIL}) 
+
+                    If Empty( cCellPhone )
+
+                        aAdd(aSA1Auto,{"A1_TEL"    , "519926647"     , NIL}) 
+                    Else
+
+                        aAdd(aSA1Auto,{"A1_TEL"    , cCellPhone     , NIL}) 
+                    EndIf
+
+                    // Risco: No cadastro de cliente, informe o risco que este cliente terá podendo ser A,B,C,D ou E,
+                      // sendo que risco A sempre irá liberar o crédito e risco E sempre irá bloquear o crédito
+                      // https://tdn.totvs.com/pages/releaseview.action?pageId=225950030
+                    If cTipoPessoa == 'J'
+                    
+                        aAdd(aSA1Auto,{"A1_RISCO"  , "E"             , NIL}) 
+                    Else
+
+                        aAdd(aSA1Auto,{"A1_RISCO"  , "A"             , NIL}) 
+                    EndIf
+
+                    //aAdd(aSA1Auto,{"A1_COND"   , cCondPagto      , NIL}) 
+                    //aAdd(aSA1Auto,{"A1_NATUREZ", cNaturFinan     , NIL})                     
+                    //aAdd(aSA1Auto,{"A1_VENCLC" , ""              , NIL}) 
+                    //aAdd(aSA1Auto,{"A1_MOEDLC" , "1'"            , NIL}) 
+
+
+                    /*
+                    If ClienteJaExiste( cSA1ChaveUnica, @cCodCli, @cLojaCli, lBloqueado )
+
+                        JaExisteSA1 := .T.
+                        nOpcAuto    := 4    //MODEL_OPERATION_UPDATE
+
+                        aAdd(aSA1Auto,{"A1_COD" , cCodCli, NIL}) 
+                        aAdd(aSA1Auto,{"A1_LOJA", cLojaCli, NIL})
+                    Else
+
+                        //aAdd(aSA1Auto,{"A1_COD" , ,Nil})
+                        aAdd(aSA1Auto,{"A1_LOJA", "0001", NIL})
+                    EndIf
+                    */
+
+                    aSA1Auto := FWVetByDic(aSA1Auto, "SA1")
+                    
+                    MSExecAuto({|a,b,c| CRMA980(a,b,c)}, aSA1Auto, nOpcAuto )
+                    
+                    If lMsErroAuto 
+
+                        cLogExecAuto := MostraErro() 
+                    Else
+            
+                        cCodCli  := SA1->A1_COD
+                        cLojaCli := SA1->A1_LOJA
+
+                        FWAlertInfo("Cliente incluído com sucesso!" + ENTER + ENTER + "Cliente: " + CCodcli + " / " + cLojaCli )
+
+                        lRetorno  := .T.
+                    EndIf
+
+                Else
+
+                    FwAlertWarning( cErrorMessage )
+                EndIf
+            Else
+
+                FWAlertError( "JSON Errado")
+            EndIf
+        case nStatus >= 300  .and.  nStatus <= 399
+
+            FwAlertWarning( cHTTPCode )
+        case nStatus >= 400  .and.  nStatus <= 499            
+
+            FwAlertWarning( cHTTPCode )
+        case nStatus >= 500  .and.  nStatus <= 599
+
+            FwAlertWarning( cHTTPCode )
+        end case
+     EndIf
+
+    // FWAlertInfo( "Integração com sucesso" )
+    /*
+        cIdInteg      = ALIAS_CHAVE_INTEGRACAO
+        cDataEnv      = ALIAS_DATA_HORA_ENVIO
+        cHorEnv       = ALIAS_DATA_HORA_ENVIO
+        cDataRec      = ALIAS_DATA_HORA_RECEBIMENTO
+        cHorRec       = ALIAS_DATA_HORA_RECEBIMENTO
+        cJsonEnv      = ALIAS_JSON_ENVIO
+        cJsonRec      = ALIAS_JSON_RECEBIMENTO
+        cTabela       = ALIAS_TABELA_ENTIDADE
+        nRecno        = ALIAS_RECNO
+        cHTTPCode     = ALIAS_STATUS_HTTP
+        cErrorMessage = ALIAS_ERROR
+    */
+
+    oLinx:GravaLog( cIdInteg, cDataEnv, cHorEnv, cDataRec, cHorRec, cJsonEnv, cRetorno, cTabela, nRecno, ;
+                    cURLBase + cPath, "POST", FunName(), lError, cHTTPCode, cErrorMessage, cLogExecAuto )     
+
+    FreeObj(oJsonCellPhone)
+    FWFreeObj(oLinx)    
+    FreeObj(oJson)
+    FreeObj(oRestClient)
+
+Return lRetorno
+
+Static Function ClienteJaExiste( cSA1ChaveUnica, cCodCli, cLojaCli, lBloqueado )
+Local lRetorno  := .T.
+Local cAliasSA1 := GetNextAlias()
+Local nQtdreg   := 0
+
+    // Observar os parametros  MV_VALCNPJ e MV_VALCPF  -  como fica nesses casos
+
+    BeginSql Alias cAliasSA1
+
+       SELECT
+              SA1.A1_COD,
+              SA1.A1_LOJA,
+              SA1.A1_CGC,
+              SA1.A1_MSBLQL,
+              SA1.R_E_C_N_O_
+         FROM
+              %Table:SA1% SA1
+        WHERE 1 = 1
+          AND SA1.A1_FILIAL = %xFilial:SA1%
+          AND SA1.A1_CGC = %Exp:cSA1ChaveUnica%
+          AND SA1.%NotDel%
+        ORDER BY %Order:SA1%
+    EndSql
+
+	cQuery := GetLastQuery()[2]	
+	count to nQtdReg
+
+    If nQtdReg <= 0
+
+        // Não tem cliente cadastrado
+        lRetorno := .F.
+    Else
+
+        (cAliasSA1)->(dbGoTop())
+        lBloqueado := (cAliasSA1)->(A1_MSBLQL) == "2"
+        cCodCli    := (cAliasSA1)->(A1_COD)
+        cLojaCli   := (cAliasSA1)->(A1_LOJA)
+    EndIf
+
+    (cAliasSA1)->(dbCloseArea())
+
+Return lRetorno 
+
+
+/*/{Protheus.doc} MyMATA410ExeAuto
+    (long_description)
+    @type  Static Function
+    @author user
+    @since date
+    @version version
+    @param param, param_type, param_descr
+    @return return, return_type, return_description
+    @example
+    (examples)
+    @see (links_or_references)
+    /*/
+Static Function MyMATA410ExeAuto( oJson, cCodCli, cLojaCli, nQtdItems )
+Local aCabec  := {}
+Local aLinha  := {}
+Local aItens  := {}
+Local nCntFor := 1
+
+// Variaveis para o  GravaLOG
+Local cDataEnv      := Date()
+Local cHorEnv       := Time() //FWTimeStamp(5)
+Local cDataRec      := ""
+Local cHorRec       := ""
+Local cJsonRec      := ""
+Local cTabela       := "SC5"
+Local nRecno        := 0
+Local cIdInteg      := ""
+Local cRetorno      := ""
+Local cLogExecAuto  := ""
+Local cURLBase      := ""
+Local cPath         := ""
+Local cHTTPCode     := ""
+Local cErrorMessage := ""
+
+Local oLinx           := FATBCAIntegracaoLinx():New()
+
+Private lMsHelpAuto		:= .T.
+Private lMsErroAuto		:= .F.
+Private lAutoErrNoFile	:= .F.
+
+    // 
+    AnalisaEnderecoEntrega( oJson, cCodCli, cLojaCli )
+
+    // Dados Frete
+    cCarrierName         := oJson:GetJsonObject( 'DeliveryMethods' )[1]:GetJsonText( 'CarrierName' )
+    cDeliveryMethodAlias := oJson:GetJsonObject( 'DeliveryMethods' )[1]:GetJsonText( 'DeliveryMethodAlias' )
+    nAmount           := Val( oJson:GetJsonObject( 'DeliveryMethods' )[1]:GetJsonText( 'Amount' ) )
+    cIdDeliveryMethod := oJson:GetJsonObject( 'DeliveryMethods' )[1]:GetJsonText( 'DeliveryMethodID' )
+
+    // poderiamos fazer uma requisição a API de trsnportadora e pegar pelo CNPJ e buscar no SA4
+        // não rolou essa ideia
+    cTransportadora      := GetAdvFVal( "SA4", "A4_COD", FWxFilial("SA4") + cIdDeliveryMethod, 5, "" )
+   
+    // Forma de Pagamento
+    cPaymentMethodID  := oJson:GetJsonObject( 'PaymentMethods' )[1]:GetJsonText( 'PaymentMethodID' )
+    cAlias            := oJson:GetJsonObject( 'PaymentMethods' )[1]:GetJsonObject( 'PaymentInfo' ):GetJsonText( 'Alias' )
+    cPaymentType      := oJson:GetJsonObject( 'PaymentMethods' )[1]:GetJsonObject( 'PaymentInfo' ):GetJsonText( 'PaymentType' )
+
+    // Dados chumbando por enquanto
+    cTabPreco    := SuperGetMV( "ES_LINXDA1", .F., "007"    )
+    cVendedor    := SuperGetMV( "ES_LINXSA4", .F., "000156" )
+    cCondPagto   := SuperGetMV( "ES_LINXSE4", .F., "039"    )    
+    cNaturFinan  := SuperGetMV( "ES_LINXSED", .F., "111109" ) 
+    nLimiteFrete := SuperGetMV( "ES_LINXFRE", .F., 600      )
+
+    // Inicio ExecAuto
+    aAdd( aCabec,{"C5_FILIAL"  , FwCodFil()	    					    , Nil} )		
+    aAdd( aCabec,{"C5_TIPO"    , "N"								    , Nil} )
+    aAdd( aCabec,{"C5_CLIENTE" , PadR( cCodCli , TamSX3("A1_COD")[01] ) , Nil} )
+    aAdd( aCabec,{"C5_LOJACLI" , PadR( cLojaCli, TamSX3("A1_LOJA")[01]) , Nil} )
+    aAdd( aCabec,{"C5_TABELA"  , cTabPreco							    , Nil} )
+    aAdd( aCabec,{"C5_VEND1"   , cVendedor							    , Nil} )
+    aAdd( aCabec,{"C5_CONDPAG" , cCondPagto							    , Nil} )
+    aAdd( aCabec,{"C5_NATUREZ" , cNaturFinan    					    , Nil} )
+
+    If nAmount < nLimiteFrete
+
+        aAdd( aCabec,{"C5_TRANSP"  , cTransportadora 					    , Nil} )
+        aAdd( aCabec,{"C5_TPFRETE" , "C"     					            , Nil} )
+        aAdd( aCabec,{"C5_FRETE"   , nAmount 					            , Nil} )
+    Else
+
+        aAdd( aCabec,{"C5_TRANSP"  , "      " 					            , Nil} )
+        aAdd( aCabec,{"C5_TPFRETE" , "C"     					            , Nil} )
+        aAdd( aCabec,{"C5_FRETE"   , 0 					                    , Nil} )
+    EndIf
+
+    aAdd( aCabec,{"C5_INTWMS"  , " " 					                , Nil} )
+    aAdd( aCabec,{"C5_OBSEXPE" , "Pedido vindo e-Commerce LINX"         , Nil} )
+
+    do case
+    case cPaymentType == FORMAPAGTO_BOLETO
+
+        aAdd( aCabec,{"C5_FORPG", "BO" 					                , Nil} )
+    case cPaymentType == FORMAPAGTO_CARTAO_CREDITO
+
+        aAdd( aCabec,{"C5_FORPG", "CC" 					                , Nil} )
+    case cPaymentType == FORMAPAGTO_PIX
+
+        aAdd( aCabec,{"C5_FORPG", "R$" 					                , Nil} )
+    otherwise
+
+        aAdd( aCabec,{"C5_FORPG", "  " 					                , Nil} )    
+    endcase
+
+    FWVetByDic( aCabec, "SC5" )
+
+    cItem := StrZero( 0, TamSX3("C6_ITEM")[1] )
+    
+    For nCntFor := 1 To nQtdItems
+        
+        cItem := Soma1(cItem)
+
+        nPrice     := Val( oJson:GetJsonObject( 'Items' )[nCntFor]:GetJsonText( 'Price' ) )
+        cProductID := oJson:GetJsonObject( 'Items' )[nCntFor]:GetJsonText( 'ProductID' )
+        nQty       := Val( oJson:GetJsonObject( 'Items' )[nCntFor]:GetJsonText( 'Qty' ) )
+        cSkuID     := oJson:GetJsonObject( 'Items' )[nCntFor]:GetJsonText( 'SkuID' )
+
+        // Chumbados por enquanto
+        cTipoOper := "01"
+        cTES      := "570"
+        cCodProd  := oJson:GetJsonObject( 'Items' )[nCntFor]:GetJsonText( 'SKU' )//"186-0106"   
+
+        aLinha := {}
+        aAdd( aLinha, {"C6_ITEM"   , cItem	 , Nil} )
+        aAdd( aLinha, {"C6_PRODUTO", cCodProd, Nil} )
+        aAdd( aLinha, {"C6_QTDVEN" , nQty 	 , Nil} )
+        aAdd( aLinha, {"C6_QTDLIB" , nQty	 , Nil} )
+        aAdd( aLinha, {"C6_PRCVEN" , nPrice	 , Nil} )
+        //aAdd( aLinha, {"C6_TOTAL"  , nPrice * nQty	 , Nil} )
+        aAdd( aLinha, {"C6_OPER"   , cTipoOper, Nil} )
+        aAdd( aLinha, {"C6_TES"	   , cTES	 , Nil} )
+
+        aAdd( aItens, aLinha )			
+    Next nCntFor
+
+    // FWVetByDic( aItens, "SC6" )
+
+    MSExecAuto( {|x,y,z| MATA410(x,y,z)}, aCabec, aItens, 3 )	
+
+    cHorRec := Time() // FWTimeStamp(5)
+
+    If lMsErroAuto
+
+        GetAutoGRLog()        
+        cLogExecAuto := MostraErro()
+    Else   
+    
+        If !Empty( SC5->C5_NUM  )
+
+            cNroPVLinx := oJson:GetJsonObject( 'OrderNumber' )
+	        
+            If SC5->(FieldPos("C5_ZIDLINX")) 
+            
+                RecLock("SC5", .F. )
+                SC5->C5_ZIDLINX := cNroPVLinx
+                SC5->(MsUnLock())
+            EndIf
+        EndIf
+
+        FWAlertInfo( "Integração do pedido de venda realizado com sucesso" + ;
+                     ENTER + ENTER + "Nro Pedido LINX: " + cNroPVLinx + ; 
+                     ENTER + ENTER + "Nro Pedido ERP : " + SC5->C5_NUM )
+
+        FWMsgRun(, {|oSay| LNXQueueItems() }, "Aguarde", "Atualizando Status do Pedido na Plataform do LINX......")                     
+
+        // Aguardando retorno do chamado  https://centraldeatendimento.totvs.com/hc/pt-br/requests/19469224
+        cInstallments  := oJson:GetJsonObject( 'PaymentMethods' )[1]:GetJsonText( 'Installments' )
+
+        If cPaymentType == FORMAPAGTO_CARTAO_CREDITO  .and.  cInstallments <> "1"
+        
+            FWMsgRun(, {|oSay| LINXTitReceberCC() }, "Aguarde", "Criando os titulos no financeiro relativo as parcelas do cartão de crédito......")                     
+        EndIf
+    endIf
+    /*
+        cIdInteg      = ALIAS_CHAVE_INTEGRACAO
+        cDataEnv      = ALIAS_DATA_HORA_ENVIO
+        cHorEnv       = ALIAS_DATA_HORA_ENVIO
+        cDataRec      = ALIAS_DATA_HORA_RECEBIMENTO
+        cHorRec       = ALIAS_DATA_HORA_RECEBIMENTO
+        cJsonEnv      = ALIAS_JSON_ENVIO
+        cJsonRec      = ALIAS_JSON_RECEBIMENTO
+        cTabela       = ALIAS_TABELA_ENTIDADE
+        nRecno        = ALIAS_RECNO
+        cHTTPCode     = ALIAS_STATUS_HTTP
+        cErrorMessage = ALIAS_ERROR
+    */
+
+    oLinx:GravaLog( cIdInteg, cDataEnv, cHorEnv, cDataRec, cHorRec, cJsonEnv, cRetorno, cTabela, nRecno, ;
+                    cURLBase + cPath, "POST", FunName(), lError, cHTTPCode, cErrorMessage, cLogExecAuto )   
+
+    FreeObj( oLinx )
+
+Return .T.
+
+/*/{Protheus.doc} NoAcento
+    (long_description)
+    @type  Static Function
+    @author user
+    @since date
+    @version version
+    @param param, param_type, param_descr
+    @return return, return_type, return_description
+    @example
+    (examples)
+    @see (links_or_references)
+    /*/
+Static Function NoAcento(cString)
+Local cChar  := ""
+Local nX     := 0 
+Local nY     := 0
+Local cVogal := "aeiouAEIOU"
+Local cAgudo := "áéíóú"+"ÁÉÍÓÚ"
+Local cCircu := "âêîôû"+"ÂÊÎÔÛ"
+Local cTrema := "äëïöü"+"ÄËÏÖÜ"
+Local cCrase := "àèìòù"+"ÀÈÌÒÙ" 
+Local cTio   := "ãõÃÕ"
+Local cCecid := "çÇ"
+Local cMaior := "&lt;"
+Local cMenor := "&gt;"
+
+For nX:= 1 To Len(cString)
+	cChar:=SubStr(cString, nX, 1)
+	IF cChar$cAgudo+cCircu+cTrema+cCecid+cTio+cCrase
+		nY:= At(cChar,cAgudo)
+		If nY > 0
+			cString := StrTran(cString,cChar,SubStr(cVogal,nY,1))
+		EndIf
+		nY:= At(cChar,cCircu)
+		If nY > 0
+			cString := StrTran(cString,cChar,SubStr(cVogal,nY,1))
+		EndIf
+		nY:= At(cChar,cTrema)
+		If nY > 0
+			cString := StrTran(cString,cChar,SubStr(cVogal,nY,1))
+		EndIf
+		nY:= At(cChar,cCrase)
+		If nY > 0
+			cString := StrTran(cString,cChar,SubStr(cVogal,nY,1))
+		EndIf		
+		nY:= At(cChar,cTio)
+		If nY > 0          
+			cString := StrTran(cString,cChar,SubStr("aoAO",nY,1))
+		EndIf		
+		nY:= At(cChar,cCecid)
+		If nY > 0
+			cString := StrTran(cString,cChar,SubStr("cC",nY,1))
+		EndIf
+	Endif
+Next
+
+If cMaior$ cString 
+	cString := strTran( cString, cMaior, "" ) 
+EndIf
+If cMenor$ cString 
+	cString := strTran( cString, cMenor, "" )
+EndIf
+
+cString := StrTran( cString, CRLF, " " )
+
+Return cString
+
+
+/*
+    Atualiza Fila de Integração
+
+*/
+Static Function LNXQueueItems()
+Local lRetorno := .T.
+
+    FwAlertInfo( "Atualização do Stuatus do Pedido na Fila de Integração!" + ENTER + ENTER + "Em desenvolvimento....")
+    
+Return lRetorno
+
+
+/*
+    Cria os titulos no financeiro relativo as parcelas do cartão de crédito
+
+*/
+Static Function LINXTitReceberCC()
+Local lRetorno := .T.
+
+    FwAlertInfo( "Criando os titulos no financeiro relativo as parcelas do cartãodde crédito!" + ENTER + ENTER + "Em desenvolvimento....")
+    
+Return lRetorno
+
+
+/*
+    Atualiza Endereco de Entrega vindo no pedido de venda
+    
+*/
+Static Function AnalisaEnderecoEntrega( oJson, cCodCli, cLojaCli )
+Local lRetorno := .T.
+Local nCntFor  := 0
+Local oModel   := Nil
+
+    // Atualmente estou alterando diretamente,  tendo mudado ou não e somenete os campos do endereço
+    SA1->(dbSelectArea("SA1"))
+    If SA1->( MsSeek( FWxFilial("SA1") + cCodCli + cLojaCli ) )
+
+        oModel := FwLoadModel("CRMA980")
+        oModel:SetOperation(MODEL_OPERATION_UPDATE)
+        oModel:Activate()            
+
+        nQtdEndereço      := Len( oJson:GetJsonObject( 'Addresses' ) )
+
+        For nCntFor = 1 to nQtdEndereço 
+
+            cLineAddress      := oJson:GetJsonObject( 'Addresses' )[nCntFor]:GetJsonText( 'AddressLine' )
+            cCity             := oJson:GetJsonObject( 'Addresses' )[nCntFor]:GetJsonText( 'City' )
+            cComplem          := oJson:GetJsonObject( 'Addresses' )[nCntFor]:GetJsonText( 'Name' )
+            cNeighBourHood    := oJson:GetJsonObject( 'Addresses' )[nCntFor]:GetJsonText( 'Neighbourhood' )
+            cNumber           := oJson:GetJsonObject( 'Addresses' )[nCntFor]:GetJsonText( 'Number' )
+            cPostalCode       := oJson:GetJsonObject( 'Addresses' )[nCntFor]:GetJsonText( 'PostalCode' )
+            cState            := oJson:GetJsonObject( 'Addresses' )[nCntFor]:GetJsonText( 'State' )
+
+            cAddressType      := oJson:GetJsonObject( 'Addresses' )[nCntFor]:GetJsonText( 'AddressType' )
+
+            If cAddressType == ENDERECO_COBRANCA
+
+                oModel:SetValue("SA1MASTER","A1_ENDCOB", cLineAddress + ", " + cNumber )
+                oModel:SetValue("SA1MASTER","A1_CEPC"  , cPostalCode                   )
+                oModel:SetValue("SA1MASTER","A1_ESTC"  , cState                        )
+                oModel:SetValue("SA1MASTER","A1_MUNC"  , cCity                         ) 
+            ElseIf cAddressType == ENDERECO_ENTREGA
+
+                oModel:SetValue("SA1MASTER","A1_ENDENT", cLineAddress + ", " + cNumber )
+                oModel:SetValue("SA1MASTER","A1_CEPE"  , cPostalCode                   )
+                oModel:SetValue("SA1MASTER","A1_ESTE"  , cState                        )
+                oModel:SetValue("SA1MASTER","A1_MUNE"  , cCity                         ) 
+            EndIf            
+        Next nCntFor
+
+        If oModel:VldData()
+
+            oModel:CommitData()
+            TMSLogMSg( "INFO", "MAWSLNX21 - Registro Alterado" + cCodCli + cLojaCli )
+        Else
+
+            VarInfo( "Erro ao alterar", oModel:GetErrorMessage() )
+
+            // Gravar no arquivo de LOG ( SZ0 )
+        EndIf
+
+        oModel:DeActivate()
+        oModel:Destroy()
+        oModel := NIL
+    EndIf
+
+Return lRetorno
+
+

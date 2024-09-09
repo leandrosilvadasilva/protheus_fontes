@@ -1,0 +1,34 @@
+#include 'totvs.ch'
+
+/*/{Protheus.doc} DESCOBRIR_CONTEUDO_PARAMETRO    (long_description)
+    @type  Function
+    @author user
+    @since 09/09/2024
+    @version version
+    @param param_name, param_type, param_descr
+    @return return_var, return_type, return_description
+    @example
+    (examples)
+    @see (links_or_references)
+    /*/
+Function U_DESCOBRIR_CONTEUDO_PARAMETRO
+
+User Function zExe279()
+    Local aArea      := FWGetArea()
+    Local cConteudo  := ""
+ 
+    //Se o parâmetro existir na base, pega o conteúdo dele
+    If FWSX6Util():ExistsParam("MV_X_PARAM")
+        cConteudo := GetMV("MV_X_PARAM")
+    EndIf
+ 
+    //Pegando com SuperGetMV
+    cConteudo := SuperGetMV("MV_X_PARAM", .F., "CONTEUDO DEFAULT")
+ 
+    //Exibe uma mensagem
+    FWAlertInfo("O conteúdo do parâmetro é: " + cConteudo, "Teste GetMV e SuperGetMV")
+ 
+    FWRestArea(aArea)
+Return
+    
+Return return_var

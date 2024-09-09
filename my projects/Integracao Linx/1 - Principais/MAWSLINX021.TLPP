@@ -1,0 +1,425 @@
+#INCLUDE "TOTVS.CH"
+#INCLUDE "RESTFUL.CH"
+#INCLUDE 'tlpp-core.th'
+
+#DEFINE HML		"2"
+#DEFINE PRD		"1"
+
+#DEFINE ENTER   CHR(10)+cHR(13)
+
+
+/*
+    TODO
+    [ ] - Como vou saber qual nota já foi integrada no LINX ?
+         - como é o retorno deles
+         - marcar um campo na SF3 ou SF2 ou SC% de que a nota ja foi pro LINX
+         - normalmente se faz isso via  traking de pedido,  ou seja,  seria na  SC5
+    [ ] - Legenda no MATA410 do campo  C5_LINXSTS informando que ja foi integrado no LINX
+         -  somente pedido do linx aparecer a legenda
+    [ ] - Opção de  re-enviar dados pro LINX em  "Outras Ações"
+
+*/
+
+User Function MA_21_WSLNX()
+	RpcSetType(3)
+	RpcSetEnv("01","0101",,,"FAT")
+
+	U_MAWSLINX21TLPP()
+
+	RpcClearEnv()
+Return
+
+/*/{Protheus.doc} MAWSLINX21TLPP
+    
+    Integração dos dados do Protheus para o LINX relativo ao PV e NF
+
+    @type  User Function
+    @author DWT Luciano
+    @since 08/03/2024
+    @version 1.0
+    @param oProcess, cVendedor
+    @return return, true / false
+    @example
+    (examples)
+    @see (links_or_references)
+/*/
+Function U_MAWS21LINXTLPP( cVendedor )
+Local lRetorno    := .T.
+Local oLinx       := FATBCAIntegracaoLinx():New()
+
+Local lIsBlind    := IsBlind()
+Local cLockName   := ProcName() + FWCodFil()
+Local cDesc       := "Integração ERP x Linx - Atualização dados pedidos e nota fiscal para o LINX"
+Local cPerg       := ""
+Local aInfoCustom := {}
+Local cTxt        := ""
+Local nTimeIni    := 0
+Local oProcess    := NIL
+
+//Local lLogCV8     := SuperGetMV( "MA_LNXCV8", .F., .F. )
+
+    TMSLogMSg( "INFO", "MAWSLNX21 -  Iniciando Integração Atualização dados pedidos e nota fiscal para o LINX - LINX -  Empresa:" + FWGrpCompany() )
+    
+	BEGIN SEQUENCE
+    
+        If oLinx:Requisitos()  .and.  oLinx:Conectado()
+
+            // Controle de semaforo pra não rodar por mais de um usuario
+            If !LockByName( cLockName,.F.,.F.,.T. ) .and.  __CUSERID <> "000416"
+
+                If !lIsBlind
+
+                    cTxt := Iif( !lIsBlind, "por outro usuário", "pelo schedule" )
+                    FWAlertInfo( "Rotina está sendo processada " + cTxt + "  -  " + cLockName )
+                Else
+
+                    TMSLogMSg("INFO", "Rotina está sendo processada por outro usuário - " + cLockName )
+                Endif
+                Break
+            EndIf
+
+            // Se não estiver rodando pelo  SCHEDULE
+            if !lIsBlind .AND. !FwIsInCallStack("U_MAWSLNX90")
+
+                nTimeIni := Time()
+                oProcess := tNewProcess():New( 'U_MAWSLNX21', cDesc, {|oSelf| fProcPrdRun(oSelf) }, cDesc, cPerg, aInfoCustom,,, cDesc,.T.,.T. )
+                FWAlertInfo( "Tempo de Duração " + ElapTime(nTimeIni, Time()) )
+            else
+
+                fProcPrdRun()
+            endif
+
+            UnLockByName( cLockName,.F.,.F.,.T. )
+        Else
+            
+            FWAlertError( "Plataforma de Integração Inaativa" )
+        EndIf
+
+	END SEQUENCE    
+
+    oLinx:Destroy()
+
+    FWFreeObj( oLinx )    
+    FWFreeObj( oProcess )       
+    TMSLogMSg( "INFO", "MAWSLNX21 -  Finalizando Integração Atualização dados pedidos e nota fiscal para o LINX - LINX -  Empresa:" + FWGrpCompany() )
+
+Return lRetorno
+
+/*
+    Integração Atualização dados pedidos e nota fiscal
+*/
+Static Function fProcPrdRun( oProcess ) AS LOGICAL
+Local lRetorno    := .T.                          AS LOGICAL
+Local aDadosMotas := {}                           AS ARRAY
+Local cJsonEnv                                    AS CHARACTER
+Local oLinx       := FATBCAIntegracaoLinx():New() AS OBJECT
+Local cChavePedidoVenda                           AS CHARACTER
+Local nQtdPedidos                                 AS NUMERIC
+Local nCntFor                                     AS NUMERIC
+Local cIdInteg                                    AS CHARACTER
+
+    If NotaAutorizada( @aDadosMotas )
+
+        nQtdPedidos := Len( aDadosMotas )
+        For nCntFor = 1 to nQtdPedidos
+
+            If MonstaJsonEnvio( aDadosMotas[nCntFor], @cJsonEnv )
+
+                If EnviaDadosLINX( cJsonEnv )
+
+                    // Integrou com sucesso,  grava no ERP pra não enviar novamente
+                    AtualizaERP( cChavePedidoVenda = aDadosMotas[nCntFor][11] ) 
+
+
+                    //oLinx:GravaLog( cIdInteg, cDataEnv, cHorEnv, cDataRec, cHorRec, cJsonEnv, cRetorno, cTabela, nRecno, ;
+                    //                cURLBase + cPath, "POST", FunName(), lError, cHTTPCode, cErrorMessage )
+                    FwAlertInfo( "" + ENTER + "Verifique tabela de LOG" )
+                Else
+
+                    //oLinx:GravaLog( cIdInteg, cDataEnv, cHorEnv, cDataRec, cHorRec, cJsonEnv, cRetorno, cTabela, nRecno, ;
+                    //                cURLBase + cPath, "POST", FunName(), lError, cHTTPCode, cErrorMessage )
+                    FwAlertInfo( "" + ENTER + "Verifique tabela de LOG" )
+                EndIf
+            Else
+
+
+                //
+                //oLinx:GravaLog( cIdInteg, cDataEnv, cHorEnv, cDataRec, cHorRec, cJsonEnv, cRetorno, cTabela, nRecno, ;
+                //                cURLBase + cPath, "POST", FunName(), lError, cHTTPCode, cErrorMessage )
+                FwAlertInfo( "JSON de envio não foi possivel conversão" + ENTER + "Verifique tabela de LOG" )
+            EndIf
+        Next nCntFor
+    Else
+
+        oLinx:GravaLog( cIdInteg, cDataEnv, cHorEnv, cDataRec, cHorRec, cJsonEnv, cRetorno, cTabela, nRecno, ;
+                        cURLBase + cPath, "POST", FunName(), lError, cHTTPCode, cErrorMessage )
+        FwAlertInfo( "" + ENTER + "Verifique tabela de LOG" )
+    EndIf
+
+Return lRetorno
+
+/*
+    Verifica se a nota realmetne foi autorizada com sucesso
+*/
+Static Function NotaAutorizada( aDadosMotas ) AS LOGICAL
+Local lRetorno  := .T.                                           AS LOGICAL
+Local cAliasSF3 := GetNextAlias()                                AS CHARACTER
+Local cQuery                                                     AS CHARACTER
+Local nQtdReg                                                    AS NUMERIC
+Local cJoinSFT  := "%" + FWJoinFilial( "SF3", "SFT" ) + "%"      AS CHARACTER
+Local cJoinSC5  := "%" + FWJoinFilial( "SF3", "SC5" ) + "%"      AS CHARACTER
+Local cURLSefaz := "https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?tipoConsulta=resumo&tipoConteudo=7PhJ+gAVw2g=&AspxAutoDetectCookieSupport=1"
+
+    BEGINSQL Alias cAliasSF3
+
+        SELECT 
+              SF3.F3_FILIAL, SF3.F3_NFISCAL, SF3.F3_SERIE, SF3.F3_CLIEFOR, SF3.F3_LOJA, SF3.F3_ESPECIE, SF3.F3_IDENTFT, SF3.F3_CODRSEF, F3_CHVNFE, F3_DESCRET, SF3.F3_CODRET, SF3.F3_CLIENT, SF3.F3_LOJENT, SF3.F3_PROTOC, SF3.F3_CFO, SF3.F3_ENTRADA,
+              SFT.FT_FILIAL, SFT.FT_NFISCAL, SFT.FT_SERIE, SFT.FT_CLIEFOR, SFT.FT_LOJA,SFT.FT_ESPECIE, SFT.FT_PRODUTO, SFT.FT_TIPOMOV, SFT.FT_ITEM, SFT.FT_IDENTF3, SFT.FT_CHVNFE, SFT.FT_DTCANC, SFT.FT_OBSERV,
+              SC5.C5_FILIAL, C5_NOTA, C5_SERIE, C5_CLIENTE, C5_LOJACLI, SC5.C5_ZIDLINX, SC5.C5_LINXSTS, SC5.C5_NUM, SC5.C5_EMISSAO,
+              SF3.F3_FILIAL + SF3.F3_NFISCAL + SF3.F3_SERIE + SF3.F3_CLIEFOR + SF3.F3_LOJA CHAVE_NOTA, 
+              SC5.C5_FILIAL + SC5.C5_NUM + SC5.C5_CLIENTE + SC5.C5_LOJACLI CHAVE_PEDIDO
+          FROM %table:SF3% SF3
+         INNER JOIN  %Table:SFT% SFT ON %exp:cJoinSFT% AND SF3.F3_NFISCAL = SFT.FT_NFISCAL AND SF3.F3_SERIE = SFT.FT_SERIE AND SF3.F3_CLIEFOR = SFT.FT_CLIEFOR AND SF3.F3_LOJA = SFT.FT_LOJA
+         INNER JOIN  %Table:SC5% SC5 ON %exp:cJoinSC5% AND SC5.C5_NOTA = SF3.F3_NFISCAL AND SC5.C5_SERIE = SF3.F3_SERIE AND SF3.F3_CLIEFOR = SC5.C5_CLIENTE AND SF3.F3_LOJA = SC5.C5_LOJACLI
+         WHERE 1=1
+           AND SFT.%NotDel% AND SFT.%NotDel% AND SC5.%NotDel%
+           AND SF3.F3_CHVNFE <> ' '  AND SFT.FT_TIPOMOV = 'S'
+           AND SC5.C5_ZIDLINX <> ' ' 
+           AND SC5.C5_LINXSTS <> 'A'
+
+    ENDSQL
+
+	cQuery := GetLastQuery()[2]	
+	count to nQtdReg
+    (cAliasSF3)->(dbGoTop())
+
+    If nQtdReg > 0
+       
+        Do While (cAliasSF3)->(!Eof())
+
+            aAdd( aDadosMotas, { (cAliasSF3)->C5_ZIDLINX   ,;  // 1
+                                 (cAliasSF3)->F3_CHVNFE    ,;  // 2
+                                 cURLSefaz                 ,;  // 3      
+                                 (cAliasSF3)->F3_SERIE     ,;  // 4    
+                                 (cAliasSF3)->F3_NFISCAL   ,;  // 5      
+                                 (cAliasSF3)->F3_CFO       ,;  // 6      
+                                 "CFOP DA SF3"             ,;  // 7      
+                                 (cAliasSF3)->F3_ENTRADA   ,;  // 8      
+                                 (cAliasSF3)->F3_ENTRADA   ,;  // 9      
+                                 (cAliasSF3)->CHAVE_NOTA   ,;  // 10 
+                                 (cAliasSF3)->CHAVE_PEDIDO  ;  // 11
+                               } )  
+             (cAliasSF3)->(DbSkip())
+        Enddo
+    Else
+
+        lRtorno := .F.
+    EndIf
+
+Return lRetorno
+
+/*
+    Monta JSON pra envio 
+*/
+Static Function MonstaJsonEnvio( aDadosMotas, cJsonEnv ) AS LOGICAL
+Local lRetorno                        AS LOGICAL
+Local jJson     := JsonObject():New() AS JSON
+Local jInvoice  := JsonObject():New() AS JSON
+Local jShipment := JsonObject():New() AS JSON
+
+    // jJson[ 'OrderID' ]                  := ""
+    jJson[ 'OrderNumber' ]              := aDadosMotas[ 1 ]
+    jJson[ 'WorkflowType' ]             := "Invoiced"                       // Identificação do fluxo a ser executado.
+    jJson[ 'ValidateCompleteWorkflow' ] := .T.
+
+    // -- Invoice
+    // jInvoice[ 'OrderInvoiceID' ]        := ""
+    // jInvoice[ 'FulfillmentID' ]         := ""
+    jInvoice[ 'Code' ]                  := aDadosMotas[ 2 ]
+    jInvoice[ 'Url' ]                   := aDadosMotas[ 3 ]         // URL de acesso à nota fiscal.
+    jInvoice[ 'IsIssued' ]              := .T.
+    /*
+    jInvoice[ 'Series' ]                := aDadosMotas[ 4 ]
+    jInvoice[ 'Number' ]                := aDadosMotas[ 5 ]
+    jInvoice[ 'CFOP' ]                  := aDadosMotas[ 6 ]         // Código fiscal de operações e prestações.  Dá nota ?????? - é Opcional
+    jInvoice[ 'XML' ]                   := ""                       // XML da nota fiscal.   
+    */
+    // jInvoice[ 'InvoicePdf' ]            := ""
+    jInvoice[ 'Observation' ]           := ""
+    //jInvoice[ 'Operation' ]             := aDadosMotas[ 7 ]         // Descrição do CFOP.  Dá nota ?????? - é Opcional
+    //jInvoice[ 'ProcessedAt' ]           := FWTimeStamp( 6, StoD( aDadosMotas[ 8 ] ) )          // Data de processamento da Nota Fiscal
+    //jInvoice[ 'UpdatedAt' ]             := FWTimeStamp( 6, StoD( aDadosMotas[ 8 ] ) )         // Data de atualização da Nota Fiscal
+    //jInvoice[ 'IssuedAt' ]              := FWTimeStamp( 6, StoD( aDadosMotas[ 9 ] ) )          // Data de emissão da Nota Fiscal
+    //jInvoice[ 'CreatedAt' ]             := FWTimeStamp( 6, StoD( aDadosMotas[ 8 ] ) )          // Data de criação da Nota Fiscal
+    jInvoice[ 'ID' ]                    := aDadosMotas[ 10 ]        // Identificador da Nota Fiscal no sistema de origem.  ChaveUnica completa
+
+    jJson[ 'Invoice' ]                  := jInvoice
+
+    // -- Shipment
+    /*
+    jShipment[ 'TrackingNumber' ]       := ""
+    jShipment[ 'TrackingUrl' ]          := ""
+
+    jJson[ 'Shipment' ]                 := jShipment
+    */
+
+    // -- 
+    cJsonEnv := jJson:ToJson()   
+
+    If NaoVazio( cJsonEnv )
+
+        lRetorno := .T.
+    EndIf
+
+    FreeObj( jShipment )
+    FreeObj( jInvoice )
+    FreeObj( jJson )
+
+Return lRetorno
+
+/*
+    Envia pro LINX
+*/
+Static Function EnviaDadosLINX( cJsonEnv ) AS LOGICAL
+Local lRetorno    := .F.                AS LOGICAL
+Local oRestClient := NIL                AS VARIANT
+Local oJson       := JsonObject():New() AS JSON
+
+// Variaveis de controle da requisição
+Local cError          := ""  AS CHARACTER
+Local cRetorno        := ""  AS CHARACTER
+Local nStatus         := 0   AS NUMERIC
+Local cHTTPError      := ""  AS CHARACTER
+Local llChkStatusCode := .T. AS LOGICAL
+Local cHTTPCode       := ""  AS CHARACTER
+Local lError          := .T. AS LOGICAL
+Local cErrorMessage   := ""  AS CHARACTER
+
+// Variaveis para o correto uso da classe de integração
+Local oLinx           := FATBCAIntegracaoLinx():New() AS OBJECT
+Local aHeader         := oLinx:aHeadStr
+Local cURLBase        := oLinx:cURLBase
+Local cPath           := "/Sales/API.svc/web/UpdateOrder" AS CHARACTER
+
+// Variaveis para o  GravaLOG
+Local cDataEnv        := Date()
+Local cHorEnv         := Time() 
+Local cDataRec        := ""
+Local cHorRec         := ""
+Local cJsonRec        := ""
+Local cTabela         := "SF3"
+Local nRecno          := 0
+Local cIdInteg        := ""
+
+// Variaveis de retorno do JSON da LINX
+Local cOrderID        := "" AS CHARACTER
+Local cOrderNumber    := "" AS CHARACTER
+Local cOrderInvoiceID := "" AS CHARACTER
+
+    // Conectando na LINX
+    oRestClient := FWRest():New(cURLBase)
+    oRestClient:SetPath(cPath)
+    oRestClient:SetChkStatus(.F.)
+
+    oRestClient:SetPostParams(cJsonEnv) 
+
+    cDataRec        := Date()
+    cHorRec         := Time() 
+    
+    lSucess         := oRestClient:Post(aHeader)
+    cRetorno        := oRestClient:GetResult()
+    cError          := oRestClient:GetLastError()
+    llChkStatusCode := oRestClient:GetChkStatus()
+    cHTTPCode       := oRestClient:GetHTTPCode()
+    nStatus         := HTTPGetStatus(@cHTTPError)
+
+    do case
+    case nStatus >= 200  .and.  nStatus <= 299
+
+        // FwAlertWarning( cHTTPCode )
+        cRetorno := DecodeUTF8(oRestClient:getResult(), "cp1252")
+        cJsonRec := oJson:FromJson(cRetorno)
+
+        If cJsonRec == NIL
+
+            nError          := Len( oJson:GetJsonObject( 'Errors' ) )
+            lError          := oJson:GetJsonObject( 'IsValid' )
+            cOrderID        := oJson:GetJsonObject( 'OrderID' )
+            cOrderNumber    := oJson:GetJsonObject( 'OrderNumber' )
+            cOrderInvoiceID := oJson:GetJsonObject( 'OrderInvoiceID' )
+
+            If nError  >  0
+
+                cErrorMessage          := oJson:GetJsonObject( 'Errors' )[1]:GetJsonText( 'ErrorMessage' )
+            EndIf
+
+            If lError  
+
+                lRetorno := .T.
+
+                oLinx:GravaLog( cIdInteg, cDataEnv, cHorEnv, cDataRec, cHorRec, cJsonEnv, cRetorno, cTabela, nRecno, ;
+                                cURLBase + cPath, "POST", FunName(), lError, cHTTPCode, cErrorMessage )
+
+                FWAlertInfo( "Atualização de dados do ERP efetuados com sucesso!!")
+
+                a:=0
+            Else
+
+                FwAlertWarning( cErrorMessage )
+            EndIf
+        Else
+
+            FWAlertError( "JSON Errado")
+        EndIf
+    case nStatus >= 300  .and.  nStatus <= 399
+
+        FwAlertWarning( cHTTPCode )
+    case nStatus >= 400  .and.  nStatus <= 499            
+
+        FwAlertWarning( cHTTPCode )
+    case nStatus >= 500  .and.  nStatus <= 599
+
+        FwAlertWarning( cHTTPCode )
+    end case
+
+    FreeObj(oRestClient)
+
+Return lRetorno
+
+/*
+    atualiza o ERP infornado que a nota foi atualizada com sucesso
+*/
+Static Function AtualizaERP( cChavePedidoVenda ) AS LOGICAL
+Local lRetorno := .T.                AS LOGICAL
+Local aArea    := FWGetArea()        AS ARRAY
+Local oError   := ErrorClass():New() AS OBJECT
+
+    TRY
+
+        SC5->(dbSelectArea("SC5"))
+        If SC5->( MsSeek( cChavePedidoVenda ) )
+
+            RecLock("SC5", .F. )
+            SC5->C5_LINXSTS  := "A" // Atualizado no LINX
+            SC5->(MsUnlock("SC5"))
+        EndIf
+
+        // - Ponto de entrda pra efetuar qualquer coisa após gravação no pedido de venda
+        If ExistBlock( "MALINX40ATUALIZAERP" )
+        
+            ExecBlock( "MALINX40ATUALIZAERP", .F., .F., { cChavePedidoVenda } )
+        EndIf
+    CATCH oError
+
+      lRetorno := .F.   
+      If oError:description == "Não foi possivel garvar na tabela de pedido de venda"
+
+          LogTMS("Não foi possivel garvar na tabela de pedido de venda") 
+      EndIf
+    ENDTRY
+
+    FreeObj( oError )
+
+FWRestArea( aArea )
+Return lRetorno
+

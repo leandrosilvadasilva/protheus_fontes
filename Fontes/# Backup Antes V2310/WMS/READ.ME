@@ -1,0 +1,23 @@
+Documentação da integração do WMS AKR
+
+
+WebService REST  para integração
+Produção    : http://10.117.83.103:31000
+Homologação : http://10.117.83.103:32555
+Usuario     : Mahospitalar
+Senha       : Pass4Mahospitalar
+
+Plataforma / Interface  para operações
+Produção    : http://10.117.83.103/Auth/Login?ReturnUrl=/
+Homologação : http://10.117.83.103:8020/Auth/Login?ReturnUrl=/
+
+Uso do parametro: MA_AUTHPRD  do tipo  boolean
+
+
+
+Fontes
+    - MAPWMS08.prw  - Classe  principal de uso nas integrações
+    - MAPWMS01.prw  - Rotina para gerar o token de autenticação nas api's da AKR
+                      É nessa rotina que temos a configuração  dos  ambientes  PRD e HML
+
+    - 

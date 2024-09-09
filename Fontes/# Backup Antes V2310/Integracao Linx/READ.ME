@@ -1,0 +1,217 @@
+
+Fontes utilizados na integração e-commerce Linx
+
+- MAWSLINXLIB    - Biblioteca de Funções Gerais
+- MAWSLNX010     - Integração Cadastro de Produtos - SB1
+- MAWSLNX020     - Integração Fila de Integração
+- MAWSLNX021     - Integração Atualização Pedido de Venda no LINX - Dados Notas Fiscais
+- MAWSLNX030     - Integração Estoque
+- MAWSLNX040     - Integração Vendedores / Sales Representantes
+
+- MAWSLNX080     - Rotina LOG de Integração
+- MAWSLNX090     - Rotina com todas as integrções para uso pelo SCHEDULE
+
+- PE_MAAVCRED    - Ponto de entrada  ja existente no projeto e utilizado para liberar a analise de credito de pessoa fisica
+- PE_MA010BUT    - Ponto de entrada  novo  para disponibilizar  opções no cadastro de produtos relativos a integração
+- PE_MA010BRW    - Ponto de entrada  novo  para disponibilizar  opções no cadastro de produtos relativos a integração
+- MAPWMS08       - Quando volta do WMS é necessário alguns ajustes que foi necessário nesse fonte
+- PE_FISENVNFE  - Vamos usar devido a transmissão automatica de notas,  bem como de forma  manual
+
+__________________________________________________________________________________________________________________________________________
+
+Documentação:
+
+https://olapropagandaemuitomais.layer.core-hlg.dcg.com.br/index.html
+https://olapropagandaemuitomais.admin.core-hlg.dcg.com.br/#
+https://olapropagandaemuitomais.layer.core-hlg.dcg.com.br/v1/Catalog/API.svc/web/help
+https://olapropagandaemuitomais.core-hlg.dcg.com.br/
+https://tdn.totvs.com/pages/releaseview.action?pageId=22480532
+https://www.epochconverter.com/
+    https://tdn.totvs.com/display/public/framework/FWTimeStamp
+    _nepoch := int(seconds()+((date() - stod("19700101"))*86400)+10800)
+    https://centraldeatendimento.totvs.com/hc/pt-br/articles/8846612401687-Cross-Segmento-TOTVS-Backoffice-Linha-Protheus-ADVPL-Converter-Epoch-Time
+
+Portal  TDN :-)   da  LINX
+https://share.linx.com.br/#all-updates
+
+https://cliente.linx.com.br/painel-chamados
+Usuário       : LUCIANO.SOUZA@DWTTI.COM.BR 
+Senha         : 817120 
+
+
+CPNJ da MA: 04.078.043/0001-40
+
+METADADOS:  https://docs.linxdigital.com.br/docs/metadados
+
+
+--------  DESCONSIDERAR  esses  dados  abaixo ----------------------------
+Ambiente HML:
+Acesso: https://olapropagandaemuitomais.admin.core-hlg.dcg.com.br/
+Layer: https://olapropagandaemuitomais.layer.core-hlg.dcg.com.br/
+Loja: https://olapropagandaemuitomais.core-hlg.dcg.com.br/
+Usuario: ma.integracao
+Senha: int@2023#Ma$
+Base64: bWEuaW50ZWdyYWNhbzppbnRAMjAyMyNNYSQ=
+--------  DESCONSIDERAR  esses  dados  acima ----------------------------
+
+
+
+---->>>>  esses dados que valem  atualemnte
+Ambiente HML:
+Acesso: https://mah.admin.core.dcg.com.br
+Layer: https://mah.layer.core.dcg.com.br
+Loja: https://mah.core.dcg.com.br
+Usuario: ti.mahospitalar
+Senha: int@2023#Ma$
+Base64: dGkubWFob3NwaXRhbGFyOmludEAyMDIzI01hJA==
+
+
+https://portaldocliente2022.atlassian.net/servicedesk/customer/portals
+
+
+
+Usuario e Senha para acesso a loja  HML
+luciano.souza@dwtti.com.br
+@SlmT2023TotvS@
+
+Ambiente PRD: 
+Acesso: https://mahospitalar.layer.core.dcg.com.br/
+Layer: https://mahospitalar.admin.core.dcg.com.br/
+Loja: 
+Usuario: luciano.dwt
+Senha: @TS2024@
+Base64: 
+https://loja.mahospitalar.com.br/carrinho
+
+_______________________________________________________________________________________________________________________________
+
+Escopo:
+Plataforma Linx  não vem  ao  ERP
+ERP  sempre  vai a plataforma
+    Via  Fila de integração
+    Exemplo 1:  ERP vai a plataform saber se tem cliente pra  incluir no ERP
+    Exemplo 1:  ERP vai a plataform saber se tem pedido  pra  incluir no ERP
+
+
+Campos que precisam ser criados
+    ID de Integração     
+    Data alteração
+    Data Inclusão
+
+Tabela LOG de Integração - Campos:
+    ALIAS_CHAVE_INTEGRACAO
+    ALIAS_DATA_HORA_ENVIO
+    ALIAS_DATA_HORA_RECEBIMENTO
+    ALIAS_JSON_ENVIO
+    ALIAS_JSON_RECEBIMENTO
+    ALIAS_TABELA_ENTIDADE
+    ALIAS_RECNO
+    ALIAS_ENDPOINT
+    ALIAS_USUARIO
+    ALIAS_ACAO
+    ALIAS_ROTINA
+    ALIAS_RESULTADO
+    ALIAS_STATUS_HTTP
+
+
+
+Tabela de Campos exclusivos para o LINX relacioandos ao CAdastro de Produtos
+Criar uma tabela SZ para amarrar os campos que precisaremos ter para a integração sem precisar criar em tabelas alternativas - tipo SB5, SB1, SB4
+Essa tabela SZ  pode ser até usado paa outrs entidades que talvez precisaremos criar - exemplo o SC5
+
+Tabela  pai/filho
+
+Campo Tabela Pai:
+SZ?_FILIAL
+SZ?_ALIAS_TABELA
+
+Campo Tabela Filho:
+SZ?_FILIAL
+SZ?_ALIAS_TABELA
+SZ?_CAMPO_LINX
+
+Só que pra isso ao incluir um SB1 - Produto
+Ter que ter um  PE  para  chamar a rotina e cadastrar os campos
+ou
+colocar na  MV_ARQPROD  pra  mostrar já na tela do MATA010
+Mas ter um PE pra não deixar incluir sem cadastrar os campos - nesse sentido pode-se ter um campo apenas no sB! que diz se vai pro LINX ou não
+    e com esse campo,   não deixa confirmar o cadastro,  sem  colocar os dados na tabela  SZ
+
+
+
+
+Sugestoões:
+1)
+criar campos nas tabelas do ERP
+
+2)
+criar um tabela temporaria que ira conter os dados
+
+3)
+ligar o  TIME_STAMP  do DBACESS  para usar em alteração
+https://tdn.totvs.com/pages/viewpage.action?pageId=563943271
+https://tdn.totvs.com/pages/viewpage.action?pageId=515681471
+
+
+4)
+Preparar o fonte para ser executado via  SCHEDULE
+
+
+
+
+_________________________________________________________
+
+Comportamento da fila de integração  x  inclusão de pedido de venda
+
+1)
+se faz um pedido na plataforma
+2)
+vai pra fila com um "Codigo de Objeto"  um  UUID
+3)
+se efetuar uma requição a fila,  vai apresentar no  nó   EntityKeyName o dado  OrderID,  como segue: "EntityKeyName": "OrderID"
+4)
+se esperar um pouco (alguns segundos),  e efetuar a requisição novamente,  vira no  nó   EntityKeyName o dado  OrderNumber,  como segue: "EntityKeyName": "OrderNumber"
+5)
+por esse cenário e teste só podemos pegar pedidos com o   "EntityKeyName"  == "OrderID"
+
+
+
+sz1_idid
+Controle de  Throttling
+
+
+
+
+
+
+chamado.ma@dwtti.com.br
+CONTA: mahospitalar
+senha: Ma@2022DWT@
+e-mail é o: chamado.ma@dwtti.com.br
+https://painel.tomticket.com
+
+
+U = admin
+S = Pr0th3UsM@@!
+
+
+eduardo.machado@mahospitalar.com.br
+Temp0101@
+
+
+MT410BRW
+M410INIC
+MT410INC
+M410STTS
+
+M410AGRV
+MTA410T
+M410RLIB
+
+
+
+
+- Boleto SICREDI - compilar  no  JOB do  PDF e PDF2
+  CI_M001.PRW
+
+  

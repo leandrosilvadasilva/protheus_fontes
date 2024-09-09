@@ -1,0 +1,205 @@
+#include 'protheus.ch'
+
+/*ÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜ
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+±±ÚÄÄÄÄÄÄÄÄÄÄÂÄÄÄÄÄÄÄÄÄÄÂÄÄÄÄÄÄÄÂÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÂÄÄÄÄÄÄÂÄÄÄÄÄÄÄÄÄÄ¿±±
+±±³Funcao    ³ PE       ³ Autor ³ Marllon Figueiredo    ³ Data ³23/12/2011³±±
+±±ÃÄÄÄÄÄÄÄÄÄÄÅÄÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄ´±±
+±±³Descricao ³ Ponto de entrada para tratamento dos dados do XML da nota  ³±±
+±±³          ³ fiscal eletronica. Disparado de NFESEFAZ.PRW               ³±±
+±±ÃÄÄÄÄÄÄÄÄÄÄÅÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ´±±
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß*/
+User Function PE01NFESEFAZ()
+
+Local aArea     := GetArea()
+Local aAreaSF2  := SF2->( GetArea() )
+Local aAreaSD2  := SD2->( GetArea() )
+Local aAreaSF1  := SF1->( GetArea() )
+Local aAreaSD1  := SD1->( GetArea() )
+Local aAreaSF4  := SF4->( GetArea() )
+
+Local aProduto  := PARAMIXB[1]
+Local cMensCli  := PARAMIXB[2]
+Local aInfoItem := PARAMIXB[6]
+Local nI, nT, nP
+Local nPos
+Local cTipo         := ''
+Local aMsgTES       := {}
+Local aMsgFormulas  := {}
+Local nValorII      := 0
+Local aPedVen       := {}
+Local aNFOri        := {}
+Local cNum          := ""
+
+// uso o CFOP para identificar o tipo da nota fiscal (entrada ou saida)
+If aProduto[1,7] >= '5000'
+	cTipo := '1'    // saida
+Else
+	cTipo := '0'    // entrada
+EndIf
+
+If cTipo = '1'
+	// ===========================================================================
+	// informacao do numero do LOTE do produto
+	For nI := 1 to Len(aInfoItem)	
+		// posiciona
+		SC5->( dbSeek(xFilial('SC5')+aInfoItem[nI,1]) )
+		SC6->( dbSeek(xFilial('SC6')+aInfoItem[nI,1]+aInfoItem[nI,2]) )
+		SD2->( dbSetOrder(3) )   // D2_FILIAL+D2_DOC+D2_SERIE+D2_CLIENTE+D2_LOJA+D2_COD+D2_ITEM
+		SD2->( dbSeek(xFilial('SD2')+SF2->F2_DOC+SF2->F2_SERIE+SC5->C5_CLIENTE+SC5->C5_LOJACLI+SC6->C6_PRODUTO+aInfoItem[nI,4]) )
+
+		If ! Empty(aProduto[nI, 19])
+			SB8->( dbSeek(xFilial('SB8')+aProduto[nI, 2]+aProduto[nI, 19]) )
+
+			// Ajuste: Marllon - 2015-06-16 - solicitacao: Borges - Retirar a Data de Validade
+			aProduto[nI, 4] := AllTrim(aProduto[nI, 4]) + " - LOTE: "+Alltrim(aProduto[nI, 19]) //+ " - VAL. " + Dtoc(SB8->B8_DTVALID)
+		Endif
+
+		//  numero de serie
+		SDB->( dbSetOrder(1) )  // DB_FILIAL+DB_PRODUTO+DB_LOCAL+DB_NUMSEQ+DB_DOC+DB_SERIE+DB_CLIFOR+DB_LOJA+DB_ITEM
+		If SDB->( dbSeek(xFilial('SDB')+SD2->D2_COD+SD2->D2_LOCAL+SD2->D2_NUMSEQ+SD2->D2_DOC+SD2->D2_SERIE+SD2->D2_CLIENTE+SD2->D2_LOJA) )
+
+			aProduto[nI, 4] += " SERIE: "+Alltrim(SDB->DB_NUMSERIE)
+		EndIf
+
+	// ===========================================================================
+	// informacao de mensagens das TES
+	//DbSelectArea("SM4") // * Formulas
+	//dbSetOrder(1)
+	dbSetOrder(1)
+
+	//SD2->( dbSetOrder(3) )
+	//SD2->( dbSeek(xFilial('SD2')+SF2->F2_DOC+SF2->F2_SERIE) )
+
+	//Do While ! SD2->( Eof() ) .and. xFilial('SD2')+SF2->F2_DOC+SF2->F2_SERIE == SD2->D2_FILIAL+SD2->D2_DOC+SD2->D2_SERIE
+		
+		SF4->( dbSeek(xFilial('SF4') + SD2->D2_TES) )
+		
+		aMsgTES := {SF4->F4_FORM1,SF4->F4_FORM2,SF4->F4_FORM3,SF4->F4_FORM4}
+		For nT := 1 to Len(aMsgTES)
+			If ! Empty(aMsgTES[nT])
+				nPos := aScan( aMsgFormulas , aMsgTES[nT] )
+				If nPos == 0
+					aAdd( aMsgFormulas , aMsgTES[nT] )
+					cMensCli += ' '+Iif(Empty(AllTrim(FORMULA(aMsgTES[nT]))), '', AllTrim(FORMULA(aMsgTES[nT])))
+				Endif
+			Endif
+		Next
+		
+		// informacao do numero do Pedido de Vendas
+		If aScan( aPedVen, {|x| x == SD2->D2_PEDIDO} ) <= 0
+			aadd(aPedVen, SD2->D2_PEDIDO)
+		EndIf
+		
+		//SD2->( dbSkip() )
+
+	Next
+
+	// informa pedidos de venda
+	If Len(aPedVen) > 0
+		cMensCli += '  Pedido(s): '
+		For nP := 1 To Len(aPedVen)
+			cMensCli += aPedVen[nP]+'/'
+		Next
+	EndIf
+	
+	// informa o codigo do cliente
+	cMensCli += '  Cliente: ' + SC5->C5_CLIENTE
+
+Else
+
+	// ===========================================================================
+	// informacao de mensagens das TES
+	DbSelectArea("SM4") // * Formulas
+	dbSetOrder(1)
+	DbSelectArea("SF4") // * Tipos de Entrada e Saida
+	dbSetOrder(1)
+
+	SD1->( dbSetOrder(1) )
+	SD1->( dbSeek(xFilial('SD1')+SF1->F1_DOC+SF1->F1_SERIE+SF1->F1_FORNECE+SF1->F1_LOJA) )
+
+	Do While !Eof() .and. xFilial('SD1')+SF1->F1_DOC+SF1->F1_SERIE+SF1->F1_FORNECE+SF1->F1_LOJA == SD1->D1_FILIAL+SD1->D1_DOC+SD1->D1_SERIE+SD1->D1_FORNECE+SD1->D1_LOJA
+		
+		SF4->( dbSeek(xFilial('SF4') + SD1->D1_TES) )
+		
+		aMsgTES := {SF4->F4_FORM1,SF4->F4_FORM2,SF4->F4_FORM3,SF4->F4_FORM4}
+		For nI := 1 to Len(aMsgTES)
+			If ! Empty(aMsgTES[nI])
+				nPos := aScan( aMsgFormulas , aMsgTES[nI] )
+				If nPos == 0
+					aAdd( aMsgFormulas , aMsgTES[nI] )
+					cMensCli += Iif(Empty(AllTrim(FORMULA(aMsgTES[nI]))), '', AllTrim(FORMULA(aMsgTES[nI]))+'/p/')
+				Endif
+			Endif
+		Next
+		
+		SD1->( dbSkip() )
+		
+	EndDo
+	
+	// verificar se eh nota de importacao
+	// localiza o processo de embarque
+	If ! Empty(SF1->F1_HAWB)
+		SW6->( dbSetOrder(1) )
+		If SW6->( dbSeek(xFilial('SW6')+SF1->F1_HAWB) )
+			cMensCli += ' Processo: ' + Alltrim(SF1->F1_HAWB)
+			If Empty(SW6->W6_DI_NUM)
+				cMensCli += ' DIRE: ' + Alltrim(SW6->W6_DIRE) + ' Data da DIRE: ' + Dtoc(SW6->W6_DTREG_D)
+			Else
+				cMensCli += ' NUM.DI: ' + Alltrim(SW6->W6_DI_NUM) + ' Data da DI: ' + Dtoc(SW6->W6_DTREG_D)
+			EndIf
+			cMensCli += ' LOCAL DO DESEMBARACO: ' + Alltrim(SW6->W6_LOCALN)
+			
+			cMensCli += ' II: ' + Alltrim(Str(SF1->F1_II,16,2)) + ' PIS: ' + Alltrim(Str(SF1->F1_VALIMP6,16,2)) + ' COFINS: ' + Alltrim(Str(SF1->F1_VALIMP5,16,2))
+			
+			//If SWD->( dbSeek(xFilial('SWD')+SF1->F1_HAWB+'419') )
+			//	cMensCli += ' TX SISCOMEX: ' + Alltrim(Str(SWD->WD_VALOR_R,16,2))
+			//EndIf
+			cMensCli += ' TX SISCOMEX: ' + Alltrim(Str(RetSiscomex( SF1->F1_DOC, SF1->F1_SERIE, SF1->F1_FORNECE, SF1->F1_LOJA ),16,2))
+			
+			If SWD->( dbSeek(xFilial('SWD')+SF1->F1_HAWB+'421') )
+				cMensCli += ' AFRMM: ' + Alltrim(Str(SWD->WD_VALOR_R,16,2))
+			EndIf
+			
+		EndIf
+    Endif
+    
+Endif
+
+// atualiza dados para o NFESEFAZ
+PARAMIXB[1]  := aProduto
+PARAMIXB[2]  := cMensCli
+
+RestArea( aAreaSF2 )
+RestArea( aAreaSD2 )
+RestArea( aAreaSF1 )
+RestArea( aAreaSD1 )
+RestArea( aAreaSF4 )
+RestArea( aArea )
+
+Return( PARAMIXB )
+
+
+/* calcula a despesa do SISCOMEX */
+Static Function RetSiscomex( cNota, cSerie, cFornec, cLoja )
+Local nValor    := 0
+Local cAliasTMP := 'TMP'
+
+BeginSql Alias cAliasTMP
+	SELECT SUM(WW_VALOR) as XX_VALOR
+	FROM %Table:SWW% SWW
+	WHERE WW_FILIAL = %xFilial:SWW% 
+	AND WW_NF_COMP  = %Exp:cNota%
+	AND WW_SE_NFC   = %Exp:cSerie%
+	AND WW_FORNEC   = %Exp:cFornec%
+	AND WW_LOJA     = %Exp:cLoja%
+	AND SUBSTRING(WW_DESPESA,1,3) = '419'
+	AND SWW.%notdel%
+EndSql
+
+nValor := (cAliasTMP)->XX_VALOR
+
+(cAliasTMP)->( dbCloseArea() )
+
+Return( nValor )

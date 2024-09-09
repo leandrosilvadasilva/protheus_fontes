@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		}
+	],
+	"settings": {
+		"totvsLanguageServer.welcomePage": false,
+		"totvsLanguageServer.askCompileResult": true,
+		"totvsLanguageServer.editor.linter.includes": "D:\\Totvs\\Protheus\\include"
+	}
+}

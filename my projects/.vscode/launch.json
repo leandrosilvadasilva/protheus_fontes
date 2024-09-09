@@ -1,0 +1,194 @@
+{
+	"configurations": [
+		{
+			"type": "totvs_language_debug",
+			"request": "launch",
+			"name": "ADVPL",
+			"program": "${command:AskForProgramName}",
+			"smartclientBin": "D:\\TOTVS\\Protheus\\bin\\smartclient\\smartclient.exe",
+			"cwb": "${workspaceFolder}",
+			"programArguments": [],
+			"enableMultiThread": true,
+			"enableProfile": false,
+			"isMultiSession": true,
+			"isAccessibilityMode": false,
+			"doNotShowSplash": false,
+			"openglMode": false,
+			"dpiMode": false,
+			"language": "",
+			"ignoreFiles": true,
+			"enableTableSync": true
+		}
+	],
+	"lastPrograms": [
+		{
+			"label": "sigamdi"
+		},
+		{
+			"label": "sigaCFG"
+		},
+		{
+			"args": [],
+			"label": "U_GERAAC9MPC"
+		},
+		{
+			"label": "sigaadv"
+		},
+		{
+			"args": [],
+			"label": "U_GERADANFE"
+		},
+		{
+			"label": "SIGA000"
+		},
+		{
+			"args": [
+				"5",
+				"U_CI_F001"
+			],
+			"label": "SIGABPM"
+		},
+		{
+			"args": [
+				"5",
+				"U_ZGERADANFE"
+			],
+			"label": "SIGABPM"
+		},
+		{
+			"args": [
+				"5",
+				"U_AFAT001"
+			],
+			"label": "SIGABPM"
+		},
+		{
+			"args": [
+				"5",
+				"U_LSSTST"
+			],
+			"label": "SIGABPM"
+		},
+		{
+			"label": "SIGAXXX"
+		},
+		{
+			"label": "apsdu"
+		},
+		{
+			"label": "U_PDF2"
+		},
+		{
+			"args": [
+				"5",
+				"U_GERADANFE"
+			],
+			"label": "SIGABPM"
+		},
+		{
+			"args": [],
+			"label": "U_TSTX"
+		},
+		{
+			"label": "UPDDISTR"
+		},
+		{
+			"label": "u_GRDANFE2"
+		},
+		{
+			"args": [],
+			"label": "U_WFFISCAL"
+		},
+		{
+			"args": [
+				"5",
+				"U_TRSM010"
+			],
+			"label": "SIGABPM"
+		},
+		{
+			"args": [
+				"5",
+				"U_GRDANFE2"
+			],
+			"label": "SIGABPM"
+		},
+		{
+			"args": [],
+			"label": "U_VALIDA_PDF"
+		},
+		{
+			"label": "U_CI_M180"
+		},
+		{
+			"args": [
+				"5",
+				"SPEDNFE"
+			],
+			"label": "SIGABPM"
+		},
+		{
+			"label": "UPDBATCH"
+		},
+		{
+			"label": "MPSDU"
+		},
+		{
+			"args": [
+				"5",
+				"U_CI_M180"
+			],
+			"label": "SIGABMP"
+		},
+		{
+			"args": [
+				"5",
+				"U_CI_M180"
+			],
+			"label": "SIGABPM"
+		},
+		{
+			"label": "sigMDI"
+		},
+		{
+			"args": [],
+			"label": "u_stamp"
+		},
+		{
+			"args": [
+				"5",
+				"U_CI_M170"
+			],
+			"label": "SIGABMP"
+		},
+		{
+			"args": [
+				"5",
+				"U_CI_M170"
+			],
+			"label": "SIGABPM"
+		},
+		{
+			"label": "SIGTACFG"
+		},
+		{
+			"label": "SIGAFAT"
+		},
+		{
+			"args": [],
+			"label": "U_GRDANFE2"
+		},
+		{
+			"label": "U_XTST"
+		},
+		{
+			"args": [],
+			"label": "ZA9"
+		},
+		{
+			"label": "SIGACOM"
+		}
+	],
+	"lastProgramExecuted": "SIGACOM",
+	"lastProgramArguments": []
+}

@@ -1,0 +1,92 @@
+#Include 'Protheus.ch'
+#INCLUDE "FWMBROWSE.CH"
+#INCLUDE "FWMVCDEF.CH"
+
+/*{Protheus.doc} DWPB2B11
+
+Log de integração 
+
+@type function
+@version  
+@author 
+@since 
+@return return_type, return_description
+
+*/
+User Function DWPB2B11()
+Local aArea     := SZ0->(GetArea())
+Private oBrowse
+
+	oBrowse := FWMBrowse():New()
+
+	oBrowse:SetAlias('SZ0')
+	oBrowse:SetDescription('Monitor B2B ')
+	oBrowse:SetMenuDef('DWPB2B11')
+
+	//oBrowse:AddLegend( "SZ0_ENVREC =='R'", "YELLOW", "REcebido"  ) 
+	//oBrowse:AddLegend( "SZ0_ENVREC =='E'", "BLUE"  , "Enviado"  )
+
+	oBrowse:Activate()
+	RestArea(aArea)
+
+Return
+
+/*
+Static Function MenuDef()
+
+	Local aRotina := {}
+
+	ADD OPTION aRotina TITLE "Pesquisar"  	ACTION 'PesqBrw' 		OPERATION 1 ACCESS 0
+	ADD OPTION aRotina Title 'Visualizar'	Action 'VIEWDEF.DWPB2B11'	OPERATION 2 ACCESS 0
+    ADD OPTION aRotina TITLE 'Visualizar1'  ACTION 'VIEWDEF.DWPB2B11'   OPERATION MODEL_OPERATION_VIEW   ACCESS 0 //OPERATION 1
+	ADD OPTION aRotina Title 'Integrar com B2B'	Action 'U_NSLA170I()'	OPERATION 3 ACCESS 0
+
+	If FWIsAdmin()
+
+		ADD OPTION aRotina Title 'Integrar Clientes'	    	Action 'U_NSLA020I()'	OPERATION 3 ACCESS 0
+		ADD OPTION aRotina Title 'Integrar Pedidos'		    	Action 'U_NSLA100I()'	OPERATION 3 ACCESS 0
+		ADD OPTION aRotina Title 'Integrar Produtos'			Action 'U_NSLA010I()'	OPERATION 3 ACCESS 0
+		ADD OPTION aRotina Title 'Integrar Saldo Estoque'		Action 'U_NSLA250I()'	OPERATION 3 ACCESS 0		
+	EndIf
+
+	ADD OPTION aRotina Title 'Imprimir'  	Action 'VIEWDEF.DWPB2B11'	OPERATION 8 ACCESS 0
+
+Return aRotina
+*/
+
+Static Function MenuDef()
+    
+    Local aRotina := FwMVCMenu("DWPB2B11")
+Return (aRotina)
+
+
+
+Static Function ViewDef()
+Local oView
+Local oModel   := ModelDef()
+Local oStruSZ0 := FWFormStruct( 2, 'SZ0' )
+
+	oView := FWFormView():New()
+	oView:SetModel( oModel )
+
+	oView:AddField( 'VIEW_SZ0', oStruSZ0, 'SZ0MASTER' )
+	oView:CreateHorizontalBox( 'TELA' , 100 )
+	oView:SetOwnerView( 'VIEW_SZ0','TELA' )
+	oView:EnableTitleView('VIEW_SZ0','Monitor B2B' )
+	oView:SetViewProperty('VIEW_SZ0','SETCOLUMNSEPARATOR', {10})
+	oView:SetCloseOnOk({||.T.})
+
+Return oView
+
+Static Function ModelDef()
+Local oModel 
+Local oStruSA1 := FWFormStruct( 1, 'SZ0' , /*bAvalCampo*/,/*lViewUsado*/ )
+
+	oModel := MPFormModel():New('DWPB2B11M') //, ,bPosModel)
+	oModel:SetDescription('Monitor B2B')
+	oModel:AddFields( 'SZ0MASTER', /*cOwner*/, oStruSA1)
+	//oModel:SetPrimaryKey({'SZ0_FILIAL', 'SZ0_ENTIDA', 'R_E_C_N_O_' })
+	oModel:GetModel( 'SZ0MASTER' ):SetDescription( 'Monitor B2B' )
+
+Return oModel
+

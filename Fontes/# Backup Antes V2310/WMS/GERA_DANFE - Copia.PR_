@@ -1,0 +1,213 @@
+#Include "Protheus.ch"
+#Include "Colors.ch"
+#Include "RPTDef.ch"
+#Include "FWPrintSetup.ch"
+#Include "TOTVS.CH"
+#INCLUDE "rwmake.ch"
+#INCLUDE "topconn.ch"
+#INCLUDE "TBICONN.CH"
+#Include "RESTFUL.CH"
+#include 'shell.ch'
+
+/*
+    IATAN EM 29/09/2022 - chamada de rotina de geração de pdf via chedule do protheus
+*/
+USER FUNCTION SCH_PDF()
+
+    Local cCommand := "D:\Totvs\Protheus\bin\smartclient\smartclient.exe -q -p=u_GERADANFE -c=PDF -e=PRODUCAO -m -l=1 "
+    Local lWait  := .F.
+    Local cPath     := "C:\temp\"
+
+    WaitRunSrv( @cCommand , @lWait , @cPath )
+
+
+RETURN
+
+/*
+    IATAN EM 24/07/2022 - ARQUIVO RESPONSÁVEL POR GERAR PDF E XML VIA JOB
+*/
+USER FUNCTION GERADANFE()
+    Local _cQry     := ''
+    Local resposta
+    Local gerandoDanfe := .T.
+    Local arrInfo := GetUserInfoArray()
+    Local contador := 0
+    Local nX := 1
+
+    FOR nX := 1 TO LEN(arrInfo)
+        IF ALLTRIM(arrInfo[nX][5]) == "U_GERADANFE"
+            contador++
+        ENDIF
+    NEXT nX
+     
+    IF contador > 1 // 1 = THREAD ATUAL
+        CONOUT("--->> SAINDO DA ROTINA POIS ESTA JA ESTA SENDO EXECUTADA EM OUTRO THREAD<<---")
+        RETURN
+    ENDIF
+
+    PREPARE ENVIRONMENT EMPRESA "01" FILIAL "01" MODULO "FAT" 
+    //IATAN EM 30/08/2022
+    /* RpcClearEnv()       
+     RpcSetType(3)
+     RpcSetEnv ("01","01")       
+*/
+
+//IATAN EM 03/08/2022 
+// --> CONFIGURAÇÃO PARA TRATAMENTO DE VARIÁVEL GLOBAL POIS ESTE FONTE SERÁ CHAMADO EM UM RECORRÊNCIA DE 1 MIN
+ 
+ //gerandoDanfe  := GetGlbValue("gerandoDanfe")
+
+ //IF !EMPTY(ALLTRIM(gerandoDanfe))
+
+//    CONOUT("-----------SAINDO DA ROTINA POIS ESTA JA ESTA SENDO EXECUTADA EM OUTRA THREAD-----------")
+//    RESET ENVIRONMENT
+//    RETURN
+
+//ELSE
+ 
+ //   PutGlbValue("gerandoDanfe", "T" )
+
+    /*
+    _cQry := " SELECT DISTINCT C5_NUM, STATUS, F2_XSTATUS, SF2.* "
+    _cQry += " FROM SF2010 SF2 INNER JOIN SD2010 SD2 ON F2_FILIAL = D2_FILIAL AND F2_DOC = D2_DOC AND F2_SERIE = D2_SERIE AND F2_CLIENTE = D2_CLIENTE AND F2_LOJA = D2_LOJA "
+    _cQry += "                 INNER JOIN SC5010 SC5 ON C5_FILIAL = D2_FILIAL AND C5_CLIENTE = D2_CLIENTE AND C5_LOJACLI = D2_LOJA AND C5_NUM = D2_PEDIDO "
+    _cQry += " 				INNER JOIN SPED050 SPED ON SUBSTRING(NFE_ID,4,9) = F2_DOC AND DOC_SERIE = F2_SERIE "
+    _cQry += " WHERE SF2.D_E_L_E_T_ <> '*' AND SD2.D_E_L_E_T_ <> '*' AND SC5.D_E_L_E_T_ <> '*' AND SPED.D_E_L_E_T_ <> '*'  "
+    _cQry += "       AND F2_XSTATUS <> STATUS AND C5_XWMS = 'S' AND F2_EMISSAO >= '20220718' AND C5_EMISSAO >= '20220718'  "
+    */
+    _cQry := " SELECT DISTINCT C5_NUM, STATUS, F2_XSTATUS, F2_FILIAL, SF2.R_E_C_N_O_ , F2_XSTATUS, F2_CHVNFE, F2_DOC, F2_SERIE, SF3.R_E_C_N_O_ AS SF3_RECNO, F2_EMISSAO, F2_HORA  "
+    _cQry += " FROM SF2010 SF2 WITH (NOLOCK) INNER JOIN SD2010 SD2 WITH (NOLOCK) ON F2_FILIAL = D2_FILIAL AND F2_DOC = D2_DOC AND F2_SERIE = D2_SERIE AND F2_CLIENTE = D2_CLIENTE  "
+    _cQry += "                                          AND F2_LOJA = D2_LOJA  AND F2_ESPECIE = 'SPED' AND F2_EMISSAO >= '20220822' AND F2_CHVNFE <> '' "
+    _cQry += "                 INNER JOIN SC5010 SC5 WITH (NOLOCK) ON C5_FILIAL = D2_FILIAL AND C5_CLIENTE = D2_CLIENTE AND C5_LOJACLI = D2_LOJA AND C5_NUM = D2_PEDIDO "
+    _cQry += " 				INNER JOIN SPED050 SPED WITH (NOLOCK) ON CAST(F2_DOC AS INT) = DOC_ID AND F2_SERIE = CAST(DOC_SERIE AS VARCHAR) AND DATE_NFE = F2_EMISSAO "
+    _cQry += " 				INNER JOIN SF3010 SF3 WITH (NOLOCK) ON F3_FILIAL = F2_FILIAL AND F3_NFISCAL = F2_DOC AND F3_SERIE = F2_SERIE AND F3_CLIEFOR = F2_CLIENTE AND F3_LOJA = F2_LOJA AND F3_EMISSAO = F2_EMISSAO AND F3_ESPECIE = F2_ESPECIE AND SUBSTRING(F3_CFO,1,1) >= '5' "
+    _cQry += " WHERE SF2.D_E_L_E_T_ <> '*' AND SD2.D_E_L_E_T_ <> '*' AND SC5.D_E_L_E_T_ <> '*' AND SPED.D_E_L_E_T_ <> '*'  "
+    _cQry += "       AND F2_XSTATUS <> STATUS AND F2_EMISSAO = '" + DTOS(dDataBase) + "'"
+    //_cQry += "       AND F2_DOC = '000023554' AND F2_SERIE = '3' AND F2_FILIAL = '0103' " 
+    _cQry += "  ORDER BY F2_EMISSAO, F2_HORA  "
+
+    //IATAN EM 11/10/2022 - CHANGEQUERY NÃO FUNCIONA COM WITH (NOLOCK)
+    //_cQry := ChangeQuery(_cQry) 
+        dbUseArea( .T.,"TOPCONN",TcGenQry( ,,_cQry ),"_SF2",.T.,.T. )
+    
+    While (_SF2->(!EOF()))
+
+        CFILANT := _SF2->F2_FILIAL
+
+        //POSICIONO NA SC5 PORQUE O MAPWMS11 ESPERA QUE A SC5 ESTEJA POSICIONADA
+        DbSelectArea("SC5")
+        SC5->(DbSetOrder(1))
+        SC5->(DbSeek(_SF2->F2_FILIAL + _SF2->C5_NUM))
+
+        SF2->(DBGOTO( _SF2->R_E_C_N_O_ ))
+
+        IF SF2->F2_XSTATUS <> cValToChar(_SF2->STATUS)
+
+            RECLOCK("SC5", .F.)
+                SC5->C5_XWMS := 'S'
+            SC5->(MsUnlock())
+
+            U_MAPWMS07( SC5->( Recno() ) )
+
+            CONOUT("MANDANDO PEDIDO PARA WMS.: " + _SF2->F2_FILIAL + _SF2->C5_NUM)
+
+            resposta := U_MAPWMS11( _SF2->R_E_C_N_O_ )
+            IF LEN(resposta) >= 2
+                // "Nenhuma carga do pedido" incluída em 21/07/2022 pois segundo Gabriel este status é válido
+                IF resposta[1] == .T. .OR. "Nenhuma carga do pedido" $ resposta[2]  .OR. "não foi localizado no WMS ou já possuí NFe associada" $ resposta[2]  
+
+                    SF2->(DBGOTO( _SF2->R_E_C_N_O_ ))
+                    RECLOCK("SF2", .F.)
+                        SF2->F2_XSTATUS := cValToChar(_SF2->STATUS)
+                    SF2->(MsUnlock())
+
+                    SF2->(DBGOTO( _SF2->R_E_C_N_O_ ))
+                    SF3->(DBGOTO( _SF2->SF3_RECNO ))
+                    //IATAN EM 08/10/2022 - MUDARAM O CAMINHO DA GERAÇÃO DO PDF AO MUDAR O SERVIDOR PARA CLOUD
+                    IF FILE("\pdf_wms\"+"pdf\"+SF2->F2_CHVNFE+".pdf") .OR. FILE("\pdf_wms\"+"xml\"+SF2->F2_CHVNFE+".xml")
+                        CONOUT("******CHAVE JA EXISTE*****-->"+SF2->F2_CHVNFE)
+                    ELSE
+                        u_wGerDanfe(_SF2->F2_CHVNFE, _SF2->F2_DOC, _SF2->F2_SERIE, "\pdf_wms\")
+                        
+                        //IATAN EM 12/10/2022 - CÓPIA DOS ARQUIVOS VAI OCORRER VIA SCRIPT AGENDADO A CADA 5 SEG
+                        CONOUT(" ... COPIANDO ARQUIVOS PARA PASTA REMOTA ... ")
+
+                        IF FILE("\pdf_wms\"+"pdf\"+SF2->F2_CHVNFE+".rel")
+                            CONOUT(" ... ESPERANDO 2 SEGUNDOS PARA CONVERTER PDF ... ")
+                            SLEEP(2000) // PAUSA DE 2 SEGUNDOS
+                        ENDIF
+                        IF FILE("\pdf_wms\"+"pdf\"+SF2->F2_CHVNFE+".pdf")
+                            WAITRUNSRV( "XCOPY D:\Totvs\Protheus_data\pdf_wms\pdf\"+SF2->F2_CHVNFE+".pdf \\192.168.11.61\arquivos\PUBLICO\PDF_NFS\pdf", .F., "c:\temp" )    
+                        ENDIF
+
+                        IF FILE("\pdf_wms\"+"boleto\"+SF2->F2_CHVNFE+".rel")
+                            CONOUT(" ... ESPERANDO 2 SEGUNDOS PARA CONVERTER BOLETO ... ")
+                            SLEEP(2000) // PAUSA DE 2 SEGUNDOS
+                        ENDIF
+                        IF FILE("\pdf_wms\"+"boleto\"+SF2->F2_CHVNFE+".pdf")
+                            WAITRUNSRV( "XCOPY D:\Totvs\Protheus_data\pdf_wms\boleto\"+SF2->F2_CHVNFE+".pdf \\192.168.11.61\arquivos\PUBLICO\PDF_NFS\boleto", .F., "c:\temp" )    
+                        ENDIF
+                        CONOUT(" ... TERMINO COPIA ARQUIVOS PARA PASTA REMOTA ... ")
+                        
+                    ENDIF
+
+
+                ELSE 
+                    CONOUT("******ERRO MAPWMS11*****-->"+resposta[2])
+                ENDIF
+            ENDIF
+        ENDIF
+        //FALTA INTEGRAR AS NOTAS DE ENTRADA
+        //U_MAPWMS16( _SF1->R_E_C_N_O_ )
+
+
+
+        _SF2->(DbSkip())
+
+    End
+    _SF2->(DBCloseArea())
+   // PutGlbValue("gerandoDanfe", "" )
+//ENDIF
+
+
+RESET ENVIRONMENT
+//RpcClearEnv()     
+
+RETURN
+
+USER FUNCTION TESTEPDF()
+    PREPARE ENVIRONMENT EMPRESA "01" FILIAL "01" MODULO "FAT" 
+    CFILANT := '0102'
+    CONOUT("******TESTE_PDF_1******")
+    //POSICIONE("SF2", 1, "01020000332731", "F2_DOC")
+    SF2->(DBGOTO( 165502 ))
+    SF3->(DBGOTO( 497766 ))
+     CONOUT("******TESTE_PDF_2******")
+     u_wGerDanfe(SF2->F2_CHVNFE, SF2->F2_DOC, SF2->F2_SERIE, "\pdf_wms\")
+    CONOUT("******TESTE_PDF_2******")
+    RESET ENVIRONMENT
+RETURN
+
+/*
+
+USER FUNCTION GERADANFE(xParams)
+
+    aParams    := StrTokArr(xParams, ';')
+    filial   := aParams[01]
+    recnoSF2 := aParams[02]
+    recnoSF3 := aParams[03]
+    chave    := aParams[04]
+    nota     := aParams[05]
+    serie    := aParams[06]
+
+       
+
+		CFILANT := filial
+		SF2->(DBGOTO( VAL(recnoSF2) ))
+		SF3->(DBGOTO( VAL(recnoSF3) ))
+		u_wGerDanfe(chave, nota, serie, "\pdf_wms\")
+
+        RESET ENVIRONMENT
+
+RETURN
+*/

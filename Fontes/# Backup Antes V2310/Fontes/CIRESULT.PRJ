@@ -1,0 +1,68 @@
+Group Novo Grupo de Projetos
+   Version=7.0
+   VSSDB=
+   HasProperties=1
+   Properties
+      BeforeApply=
+      AfterApply=
+      Icon=
+      ID=
+      Version=
+      PalmName=
+      OutPut=
+   End
+   ProjectsCount=1
+   Project Novo Projeto
+      FoldersCount=2
+      Folder Fontes
+         VSSPath=Fontes
+         FilesCount=14
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\CI_M460F.prw
+             Type=T
+         End
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\CI_M520E.prw
+             Type=T
+         End
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\CIRM010.prw
+             Type=T
+         End
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\CIRM020.prw
+             Type=T
+         End
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\CIRM030.prw
+             Type=T
+         End
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\CIRXFUN.PRW
+             Type=T
+         End
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\PE_M460Fim.prw
+             Type=T
+         End
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\PE_SF2520E.prw
+             Type=T
+         End
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\CI_M100A.prw
+             Type=T
+         End
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\PE_MT100AGR.prw
+             Type=T
+         End
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\CI_M100X.prw
+             Type=T
+         End
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\CIRM040.prw
+             Type=T
+         End
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\CIRMA330.prw
+             Type=T
+         End
+         File \TOTVS\ERP_PRODUCAO\Protheus12\my projects\fontes\CIRESULT\CIRMA300.prw
+             Type=T
+         End
+      End
+      Folder Definições
+         VSSPath=Definições
+         FilesCount=0
+      End
+   End
+End

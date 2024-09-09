@@ -1,0 +1,39 @@
+#include 'totvs.ch'
+
+
+/*/{Protheus.doc} U_WORK_DBSELECTAREA
+    (long_description)
+    @type  F
+    
+    //-- Prepara o ambiente
+    rpcSe
+    unction
+    @author 
+    @since 22/07/2024
+    @version version
+    @param param_name, param_type, param_descr
+    @return return_var, return_type, return_description
+    @example
+    (examples)
+    @see (links_or_references)
+    /*/
+Function U_WORK_DBSELECTAREA
+
+
+	//-- Prepara o ambiente
+	rpcSetEnv('99','01','admin',' ','FAT', 'U_WORK_DBSELECTAREA')
+
+	//-- Seleciona uma area para ser padrão a ser utilizada
+	dbSelectArea("SA1")
+	dbSelectArea("SB1")
+
+	//-- Retorna o identificador de controle de area de trabalho
+	nAreaSA1 := select("SA1")
+
+	dbSelectArea(nAreaSA1)
+
+	//-- Encerra o ambiente
+	rpcClearEnv()
+
+
+Return return

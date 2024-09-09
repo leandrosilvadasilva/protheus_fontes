@@ -1,0 +1,6 @@
+{
+    "totvsLanguageServer.welcomePage": false,
+    "totvsLanguageServer.workspaceServerConfig": true,
+    "totvsLanguageServer.editor.linter.includes": "D:\\Totvs\\Protheus\\Includes",
+    "totvsLanguageServer.askCompileResult": false
+}

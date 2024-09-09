@@ -1,0 +1,93 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "totvs_language_debug",
+			"request": "launch",
+			"name": "TOTVS Language Debug",
+			"program": "${command:AskForProgramName}",
+			"cwb": "${workspaceFolder}",
+			"smartclientBin": "D:\\Totvs\\Protheus\\Bin\\SmartClient\\smartclient.exe",
+			"isMultiSession": true,
+			"enableTableSync": true,
+			"programArguments": [],
+			"enableMultiThread": true,
+			"enableProfile": false,
+			"isAccessibilityMode": false,
+			"doNotShowSplash": false,
+			"openglMode": false,
+			"dpiMode": false,
+			"olddpiMode": false,
+			"language": "1",
+			"ignoreFiles": false
+		}
+	],
+	"lastPrograms": [
+		{
+			"label": "SIGAMDI"
+		},
+		{
+			"label": "APSDU"
+		},
+		{
+			"label": "SIGAcfg"
+		},
+		{
+			"args": [],
+			"label": "U_VALIDA_PDF"
+		},
+		{
+			"label": "SIGAEST"
+		},
+		{
+			"args": [
+				"5",
+				"U_SCH_PDF"
+			],
+			"label": "SIGABPM"
+		},
+		{
+			"label": "U_XXX"
+		},
+		{
+			"args": [],
+			"label": "U_EXPSA1"
+		},
+		{
+			"args": [
+				"5",
+				"U_GERADANFE"
+			],
+			"label": "SIGABPM"
+		},
+		{
+			"label": "U_STAMP"
+		},
+		{
+			"args": [],
+			"label": "U_STAMP"
+		},
+		{
+			"label": "SIGAXXX"
+		},
+		{
+			"label": "SIGAMDU"
+		},
+		{
+			"label": "SIAMDI"
+		},
+		{
+			"label": "SIGAFAT"
+		},
+		{
+			"label": "U_GERADANTE"
+		},
+		{
+			"label": "U_GRDANFE2"
+		},
+		{
+			"label": "SIGAAMDI"
+		}
+	],
+	"lastProgramExecuted": "SIGAMDI"
+}

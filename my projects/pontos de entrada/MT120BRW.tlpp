@@ -1,0 +1,18 @@
+#INCLUDE 'TOTVS.CH'
+/*/{Protheus.doc} User Function MT120BRW
+    Ponto de entrada para impimir o Pedido de Compra Rdmake pelo Browse do Pedido de Compras.
+    @type  Function
+    @author Thalys Augusto
+    @since 22/03/2023
+    @version version
+    @param param_name, param_type, param_descr
+    @return return_var, return_type, return_description
+    @example
+    (examples)
+    @see (links_or_references)
+/*/
+User Function MT120BRW()
+
+    aAdd( aRotina, { "Imprimir OC PDF",    	"U_zRPedCom",  0, 2 } )
+
+Return

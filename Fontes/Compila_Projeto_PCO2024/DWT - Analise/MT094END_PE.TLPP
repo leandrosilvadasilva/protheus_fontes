@@ -1,0 +1,402 @@
+#Include 'Protheus.ch'
+#Include "TOTVS.CH"
+#Include "topconn.ch"
+#Include "ap5mail.ch"
+
+/*/{Protheus.doc} MT094END
+
+    Description
+
+    @author  Name
+    @example Example
+    nOpc = PARAMIXB[3]	Operação a ser executada (1-Aprovar, 2-Estornar, 3-Aprovar pelo Superior,
+    4-Transferir para Superior, 5-Rejeitar, 6-Bloquear)
+    @return  Return
+    @table   Tables
+    @since   22-09-2022
+/*/
+User Function MT094END()
+
+	Local cPedido 	:= AllTrim(PARAMIXB[1])
+	Local cTipo    	:= Alltrim(PARAMIXB[2]) //Tipo do documento (PC, NF, SA, IP, AE)
+	Local nOpcao   	:= PARAMIXB[3] //1-Aprovar, 2-Estornar, 3-Aprovar pelo Superior, 4-Transferir para Superior, 5-Rejeitar, 6-Bloquear
+	Local cNomeUser := Alltrim(UsrFullName(__CUSERID))
+	Local cObsmot 	:= SCR->CR_XOBSERV + ' '+ CVALTOCHAR(DDATABASE) +' '+ cNomeUser +': '+SCR->CR_OBS + ' //'
+	Local cNomeArq 	:= ""
+	Local cKeySCH	:= ""
+	Local cKeySC7 	:= ""
+	Local lParHab24	:= GetNewPar("MA_PCOSC7", .F. )   //# habilita ou não as novas regras de geração do orçamento para 2024
+
+	//#verifica se existe a integração com o PCO
+	cKeySCH := "SCH"+sc7->(xFilial())+SC7->c7_num
+	cKeySC7 := "SC7"+sc7->(xFilial())+SC7->c7_num
+
+	If lParHab24
+		Akd->(DbSetOrder(10))//#AKD_FILIAL+AKD_CHAVE+AKD_SEQ
+		If Akd->(DbSeek(xFilial()+cKeySCH))
+			While Substr(cKeySC7,1,Len(cKeySCH)) == Substr(akd->akd_chave,1,Len(cKeySCH)) .And. akd->(!eof())
+				If Reclock("AKD",.F.)
+					akd->akd_tpsald := "EM"
+					akd->(MsUnlock())
+				Endif
+				akd->(DbSkip())
+			Enddo
+		Endif
+
+		If Akd->(Dbseek(xFilial()+cKeySC7))
+			While Substr(cKeySC7,1,Len(cKeySC7)) == Substr(akd->akd_chave,1,Len(cKeySC7)) .And. akd->(!eof())
+				If Reclock("AKD",.F.)
+					akd->akd_tpsald := "EM"
+					akd->(MsUnlock())
+				Endif
+				akd->(DbSkip())
+			Enddo
+		Endif   
+	Endif
+	
+	// Validações do usuário.
+	If (nOpcao = 1 .OR. nOpcao = 3)
+
+		if cTipo == "IP"
+
+			SCR->(DbSelectArea("SCR"))
+			SCR->(dbSetOrder(1))
+			SCR->(dbSeek(xFilial("SCR")+PadR(cTipo,Tamsx3("CR_TIPO")[01])+PadR(cPedido,Tamsx3("CR_NUM")[01])))
+			Do While SCR->(!Eof()) .And. SCR->(CR_FILIAL+CR_TIPO+CR_NUM) == xFilial("SCR")+PadR(cTipo,Tamsx3("CR_TIPO")[01])+PadR(cPedido,Tamsx3("CR_NUM")[01])
+				Reclock("SCR",.F.)
+				SCR->CR_XOBSERV := cObsmot + CRLF
+				SCR->(MsUnlock())
+				SCR->(dbSkip())
+			EndDo
+
+		Endif
+
+
+
+		//IATAN EM 14/12/2023
+		IF cTipo == "SC"
+			liberarSC( SCR->CR_FILIAL, SCR->CR_NUM )
+			xCodHtm  := GeraHtmSC( )
+			xAssunto := "Solicitação de Compra Aprovada SC Número " + Alltrim(SCR->CR_NUM)
+			xCorpo   := xCodHtm
+			email := GETMV("MV_XWFSC")
+			ENVMAIL(email, xCodHtm, xAssunto,"")
+		ENDIF
+
+
+
+	elseif (nOpcao = 5 .OR. nOpcao = 6)
+
+		DbSelectArea("SC7")
+		DbSetOrder(1)
+		DbGoTop()
+		DbSeek(xFilial("SC7")+Alltrim(ParamIxb[1]))
+		// Email do Comprador
+		cMailComp := UsrRetMail(SC7->C7_USER)
+		If !Empty(cMailComp)
+			cCodHtm  := GeraHtm()
+			MemoWrite(cNomeArq,cCodHtm)
+			cAssunto := "Pedido de Compra REJEITADO | BLOQUEADO "+Alltrim(ParamIxb[1])
+			cCorpo   := cCodHtm
+			ENVMAIL(cMailComp, cCodHtm, cAssunto,"")
+		EndIf
+
+	Endif
+
+Return
+
+/*/{Protheus.doc} GeraHtm
+Gera codigo Html para o corpo do email
+	 
+@author  Thalys Augusto
+@since   26/12/2022
+@version 1.0
+@type    Ponto de Entrada
+/*/
+Static Function GeraHtm()
+	Local cHtm    := ''
+	Local cFilIni := ""
+	Local cNumIni := ""
+	Local cCotac  := ""
+	cHtm += '<html>'
+	cHtm += '<head>'
+	cHtm += '<meta http-equiv="Content-Type"'
+	cHtm += 'content="text/html; charset=iso-8859-1">'
+	cHtm += '<title>Pedido de Compra Rejeitado | Bloqueado</title>'
+	cHtm += '<style type="text/css">'
+	cHtm += '<!--'
+	cHtm += '.style12 {font-family: Arial, Helvetica, sans-serif;'
+	cHtm += '  font-weight: bold;'
+	cHtm += '  font-size: 12px;'
+	cHtm += '}'
+	cHtm += '.style7 {font-size: 12px;'
+	cHtm += '  color: #000066;'
+	cHtm += '  font-weight: bold;'
+	cHtm += '  font-family: Arial, Helvetica, sans-serif;'
+	cHtm += '}'
+	cHtm += '.style8 {color: #FFFFFF;'
+	cHtm += '  font-size: 14px;'
+	cHtm += '  font-family: Arial, Helvetica, sans-serif;'
+	cHtm += '  font-weight: bold;'
+	cHtm += '}'
+	cHtm += '.style9 {font-size: 12px; font-family: Arial, Helvetica, sans-serif; }'
+	cHtm += '.style13 {'
+	cHtm += '  font-size: 14px;'
+	cHtm += '  font-weight: bold;'
+	cHtm += '  color: #000000;'
+	cHtm += '}'
+	cHtm += '.style19 {font-size: 12px; font-family: Arial, Helvetica, sans-serif; color: #f3f3f3; }'
+	cHtm += '-->'
+	cHtm += '</style>'
+	cHtm += '</head>'
+	cHtm += '<body bgcolor="#FFFFFF">'
+	cHtm += '<br>'
+	cHtm += '    <table cellspacing="0" cellpadding="0" width="100%" border="0">'
+	cHtm += '      <tr>'
+	cHtm += '        <td bgcolor="#727272"><div align="center" class="style8">Pedido de Compra Rejeitado | Bloqueado</div></td>    '
+	cHtm += '      </tr>'
+	cHtm += '    </table>'
+	cHtm += '    <table cellspacing="0" cellpadding="0" width="100%" border="0"">'
+	cHtm += '      <tr>'
+	cHtm += '        <td > </td>'
+	cHtm += '      </tr>'
+	cHtm += '    </table>'
+	cHtm += '    <table cellspacing="0" cellpadding="0" width="100%" border="0"">'
+	cHtm += '    </table>'
+	cHtm += '    <table cellspacing="0" cellpadding="0" width="100%" border="0">'
+	cHtm += '      <tr>'
+	cHtm += '        <td width="12%" height="19" bgcolor="#f3f3f3"><span class="style7">Numero do Pedido: </span></td>'
+	cHtm += '        <td width="21%" bgcolor="#f3f3f3"><span class="style9">'+SC7->C7_NUM+'</span></td>'
+	cHtm += '        <td width="12%" bgcolor="#f3f3f3"><span class="style7">Data Emissao:</span></td>'
+	cHtm += '        <td width="21%" bgcolor="#f3f3f3"><span class="style9">'+DTOC(SC7->C7_EMISSAO)+'</span></td>'
+	cHtm += '      </tr>'
+	cHtm += '      <tr>'
+	cHtm += '        <td height="19" bgcolor="#f3f3f3"><span class="style7">Fornecedor:</span></td>'
+	cHtm += '        <td bgcolor="#f3f3f3"><span class="style9">'+GetAdvfVal("SA2","A2_NOME",xFilial("SA2")+SC7->C7_FORNECE+SC7->C7_LOJA,1)+'</span></td>'
+	cHtm += '        <td bgcolor="#f3f3f3"><span class="style7">Codigo/Loja Fornecedor:</span></td>'
+	cHtm += '        <td bgcolor="#f3f3f3"><span class="style9">'+SC7->C7_FORNECE+'/'+SC7->C7_LOJA+'</span></td>'
+	cHtm += '      </tr>'
+	cHtm += '      <tr bgcolor="#f3f3f3">'
+	cHtm += '        <td height="19"><span class="style7">Aprovador:</span></td>'
+	cHtm += '        <td bgcolor="#f3f3f3" ><span class="style9">'+UsrFullName(SCR->CR_USERLIB)+'</span></td>'
+	cHtm += '        <td ><span class="style7">Data/Hora Rejeicao: </span></td>'
+	cHtm += '        <td bgcolor="#f3f3f3" ><span class="style9">'+DTOC(dDataBase)+' '+Time()+'</span></td>'
+	cHtm += '      </tr>'
+	cHtm += '    </table>'
+	cHtm += '    <table cellspacing="0" cellpadding="0" width="100%" border="0">'
+	cHtm += '    </table>'
+	cHtm += '    <table cellspacing="0" cellpadding="0" width="100%" border="0"">'
+	cHtm += '      <tr>'
+	cHtm += '        <td width="12%" height="19" > </td>'
+	cHtm += '        <td width="21%" > </td>'
+	cHtm += '        <td width="12%" height="19" > </td>'
+	cHtm += '        <td width="21%" > </td>'
+	cHtm += '        <td width="12%" > </td>'
+	cHtm += '        <td width="22%" > </td>'
+	cHtm += '      </tr>'
+	cHtm += '    </table>'
+	cHtm += '    <table cellspacing="0" cellpadding="0" width="100%" border="0">'
+	cHtm += '      <tr>'
+	cHtm += '        <td bgcolor="#727272"><div align="center" class="style8">Itens</div></td>'
+	cHtm += '      </tr>'
+	cHtm += '    </table>'
+	cHtm += '    <table cellspacing="1" cellpadding="1" width="100%" border="0">'
+	cHtm += '      <tr>'
+	cHtm += '        <td width="4%" bordercolor="#CCCCCC"><div align="center"><span class="style12">Item</span></div></td>'
+	cHtm += '        <td width="10%" bordercolor="#CCCCCC"><div align="left"><span class="style12">Produto</span></div></td>'
+	cHtm += '        <td width="4%" bordercolor="#CCCCCC" class="style12"><div align="center">U.N.</div></td>'
+	cHtm += '        <td width="50%" bordercolor="#CCCCCC"><div align="left"><span class="style9"><strong>Descricao</strong></span></div></td>'
+	cHtm += '        <td width="10%" bordercolor="#CCCCCC"><div align="center"><span class="style9"><strong>Qtde</strong></span></div></td>'
+	cHtm += '        <td width="11%" bordercolor="#CCCCCC"><div align="center"><span class="style9"><strong>Pr. Unitario</strong></span></div></td>'
+	cHtm += '        <td width="11%" bordercolor="#CCCCCC"><div align="center"><span class="style9"><strong>Total</strong></span></div></td>'
+	cHtm += '      </tr>'
+	DbSelectArea("SC7")
+	cFilIni := SC7->C7_FILIAL
+	cNumIni := SC7->C7_NUM
+	Do While !Eof() .and. cFilIni==SC7->C7_FILIAL .and. SC7->C7_NUM==cNumIni
+		// Verifica se ha cotacao
+		cCotac := ""
+		If !Empty(SC7->C7_NUMSC)
+			DbSelectArea("SC1")
+			DbSetOrder(1)
+			DbSeek(SC7->C7_FILIAL+SC7->C7_NUMSC+SC7->C7_ITEMSC)
+			cCotac := SC1->C1_COTACAO
+		EndIf
+		cHtm += '      <tr>'
+		cHtm += '        <td bordercolor="#CCCCCC" bgcolor="#f3f3f3"><div align="center"><span class="style9">'+SC7->C7_ITEM+'</span></div></td>'
+		cHtm += '        <td bordercolor="#CCCCCC" bgcolor="#f3f3f3"><div align="left"><span class="style9">'+Alltrim(SC7->C7_PRODUTO)+'</span></div></td>'
+		cHtm += '        <td bordercolor="#CCCCCC" bgcolor="#f3f3f3" class="style9"><div align="center">'+SC7->C7_UM+'</div></td>'
+		cHtm += '        <td bordercolor="#CCCCCC" bgcolor="#f3f3f3"><div align="left"><span class="style9">'+Alltrim(SC7->C7_DESCRI)+'</span></div></td>'
+		cHtm += '        <td bordercolor="#CCCCCC" bgcolor="#f3f3f3"><div align="center"><span class="style9">'+Transform(SC7->C7_QUANT,GetSX3Cache("C7_QUANT","X3_PICTURE"))+'</span></div></td>'
+		cHtm += '        <td bordercolor="#CCCCCC" bgcolor="#f3f3f3"><div align="center"><span class="style9">'+Transform(SC7->C7_PRECO,GetSX3Cache("C7_QUANT","X3_PICTURE"))+'</span></div></td>'
+		cHtm += '        <td bordercolor="#CCCCCC" bgcolor="#f3f3f3"><div align="center"><span class="style9">'+Transform(SC7->C7_TOTAL,GetSX3Cache("C7_QUANT","X3_PICTURE"))+'</span></div></td>'
+		cHtm += '      </tr>'
+
+		DbSelectArea("SC7")
+		DbSkip()
+	EndDo
+	cHtm += '    </table><Br>'
+	cHtm += '    <span class="style13"><font face="Tahoma" size=2>Observacoes</font></span><Br>'
+	cHtm += '    <font face="Tahoma" size=2><textarea name="S1" rows="4" cols="74">'+Alltrim(SCR->CR_OBS)+'</textarea></font>'
+	cHtm += '</body>'
+	cHtm += '</html>'
+Return cHtm
+
+
+/*/{Protheus.doc} ENVMAIL
+
+	Funcao de envio de e-mail
+
+	@author  Nome
+	@example Exemplos
+	@param   [Nome_do_Parametro],Tipo_do_Parametro,Descricao_do_Parametro
+	@return  Especifica_o_retorno
+	@table   Tabelas
+	@since   24-01-2023
+/*/
+Static Function ENVMAIL(cDestinat,cMsg,cTitulo,cArquivos)
+
+	Local cMensagem := ""
+
+	Local cServer   := getmv('MV_RELSERV')
+	Local cAccount  := getmv('MV_RELACNT')
+	Local cPassword := getmv('MV_RELPSW')
+	Local cMailFrom := getmv('MV_RELFROM')
+	Local lAutent   := getmv('MV_RELAUTH')
+
+	cDestinat := Alltrim(cDestinat)
+
+	//Inicia Conexao com o Servidor de e-mails
+	CONNECT SMTP SERVER cServer ACCOUNT cAccount PASSWORD cPassword Result lConectou
+
+	If lConectou
+		cMsgAux := ("Conectado com servidor de E-Mail - " + cServer)
+	Else
+		cMsgAux := ("Erro Envio e-mail: " + __cUserID +" "+ FunName() +" ("+cDestinat+")")
+	Endif
+
+	//Realiza a autenticação com o servidor de email
+	If lAutent
+		MailAuth(cAccount, cPassword)
+	EndIf
+
+
+	If Empty(cArquivos)
+		Send Mail From cMailFrom To cDestinat Subject cTitulo Body cMsg Result lEnviado
+	Else
+		Send Mail From cMailFrom To cDestinat Subject cTitulo Body cMsg ATTACHMENT cArquivos Result lEnviado
+	Endif
+
+	Get Mail Error cMensagem
+
+	If !Empty(cMensagem)
+		cMsgAux := ("Mensagem de erro: "+ cMensagem)
+	Else
+		cMsgAux := ("E-mail enviado para "+Alltrim(cDestinat))
+	Endif
+
+	DISCONNECT SMTP SERVER Result lDisConectou
+
+	If lDisConectou
+		cMsgAux := ("Desconectado com servidor de E-Mail - " + cServer)
+	Endif
+
+Return
+
+
+
+Static Function GeraHtmSC()
+	Local cHtm    := ''
+	Local cFilIni := ""
+	Local cNumIni := ""
+	Local cCotac  := ""
+	Local aprovador := ALLTRIM(UsrFullName(SCR->CR_USER))
+	Local centroCusto := ""
+
+	Local sql       := ""
+	
+	sql +=" SELECT * "
+	sql +=" FROM SC1010 SC1 LEFT JOIN CTT010 CTT ON CTT.D_E_L_E_T_ <> '*' AND CTT_CUSTO = C1_CC "
+	sql +=" WHERE SC1.D_E_L_E_T_ <> '*' AND C1_FILIAL = '" + SCR->CR_FILIAL + "' AND C1_NUM = '" + ALLTRIM(SCR->CR_NUM) + "' "
+ 
+	TCQuery sql New Alias "QRY_SC1"
+	
+	QRY_SC1->(DbGoTop())
+
+	While ! QRY_SC1->(Eof())
+
+		centroCusto := ALLTRIM(QRY_SC1->CTT_CUSTO) + " - " + ALLTRIM(QRY_SC1->CTT_DESC01)
+		EXIT
+
+		QRY_SC1->(DbSkip())
+	EndDo
+
+	QRY_SC1->(DbCloseArea())
+
+
+	cHtm += '<html>'
+	cHtm += '<head>'
+	cHtm += '<meta http-equiv="Content-Type"'
+	cHtm += 'content="text/html; charset=iso-8859-1">'
+	cHtm += '<title>Pedido de Compra Rejeitado | Bloqueado</title>'
+	cHtm += '<style type="text/css">'
+	cHtm += '<!--'
+	cHtm += '.style12 {font-family: Arial, Helvetica, sans-serif;'
+	cHtm += '  font-weight: bold;'
+	cHtm += '  font-size: 12px;'
+	cHtm += '}'
+	cHtm += '.style7 {font-size: 12px;'
+	cHtm += '  color: #000066;'
+	cHtm += '  font-weight: bold;'
+	cHtm += '  font-family: Arial, Helvetica, sans-serif;'
+	cHtm += '}'
+	cHtm += '.style8 {color: #FFFFFF;'
+	cHtm += '  font-size: 14px;'
+	cHtm += '  font-family: Arial, Helvetica, sans-serif;'
+	cHtm += '  font-weight: bold;'
+	cHtm += '}'
+	cHtm += '.style9 {font-size: 12px; font-family: Arial, Helvetica, sans-serif; }'
+	cHtm += '.style13 {'
+	cHtm += '  font-size: 14px;'
+	cHtm += '  font-weight: bold;'
+	cHtm += '  color: #000000;'
+	cHtm += '}'
+	cHtm += '.style19 {font-size: 12px; font-family: Arial, Helvetica, sans-serif; color: #f3f3f3; }'
+	cHtm += '-->'
+	cHtm += '</style>'
+	cHtm += '</head>'
+	cHtm += '<body bgcolor="#FFFFFF">'
+	cHtm += '<br>'
+	cHtm += '<b>Aprovador.: ' + aprovador + '</b>'
+	cHtm += '<br>'
+	cHtm += '<b>Centro de Custo.: ' + centroCusto + '</b>'
+	cHtm += '</body>'
+	cHtm += '</html>'
+
+Return cHtm
+
+
+
+Static Function liberarSC(filial, numero)
+
+Local sql       := "SELECT * FROM SC1010 WHERE D_E_L_E_T_ <> '*' AND C1_NUM = '" + ALLTRIM(numero) + "' AND C1_FILIAL = '" + ALLTRIM(filial) + "' "
+ 
+	TCQuery sql New Alias "QRY_SC1"
+	
+	QRY_SC1->(DbGoTop())
+
+	While ! QRY_SC1->(Eof())
+
+		SC1->( DBGOTO( QRY_SC1->R_E_C_N_O_ ) )
+
+		RECLOCK("SC1", .F.)
+			SC1->C1_APROV := 'L'
+		SC1->( MSUNLOCK() )
+
+		QRY_SC1->(DbSkip())
+	EndDo
+
+	QRY_SC1->(DbCloseArea())
+
+
+Return
