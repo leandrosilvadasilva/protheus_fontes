@@ -188,7 +188,7 @@ User Function xTstWFlow(cTo, cAssunto, cMensagem, aAnexos, cMailFrom, lExibeMsg,
 	Local	oMessage
 	Local 	cMailServer		:= SuperGetMv("MV_RELSERV",, "smtp.office365.com:587")                                                                                                                                                                                                                                     
 	Local 	nMailPorta		:= 587
-	Local 	cMailConta		:= SuperGetMV("MV_RELACNT",,"nfe@mahospitalar.com.br")
+	Local 	cMailConta		:= SuperGetMV("MV_RELACNT",,"nfe@mahospitalar.com.br") // tentar o parametro MV_RELFROM
 	Local 	cMailSenha		:= SuperGetMV("MV_RELAPSW",,"VJN)~Wy5m+")
 	Local 	lUseSSL			:= SuperGetMV("MV_RELSSL",,.T.)
 	Local 	lUseTLS			:= SuperGetMV("MV_RELTLS",,.T.)

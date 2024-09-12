@@ -3,7 +3,18 @@
 
 /*User Function SendJob()
 	StartJob("u_SendEmail", getEnvServer(), .T.)
+	[mail]
+	PROTOCOL=SMTP
+	;EXTENDSMTP=1
+	TLSVERSION=1
+	SSLVERSION=3
+	TRYPROTOCOLS=1
+	AUTHLOGIN=1
+	AUTHPLAIN=1
+	AUTHNTLM=1
+	
 Return */
+
 
 user function SendEmail()
 	Local cUser := "", cPass := "", cSendSrv := ""

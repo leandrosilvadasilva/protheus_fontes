@@ -13,10 +13,12 @@
     /*/
 Function U_DESCOBRIR_CONTEUDO_PARAMETRO
 
+
 User Function zExe279()
     Local aArea      := FWGetArea()
     Local cConteudo  := ""
- 
+
+    RpcSetEnv("01","0101")
     //Se o parâmetro existir na base, pega o conteúdo dele
     If FWSX6Util():ExistsParam("MV_X_PARAM")
         cConteudo := GetMV("MV_X_PARAM")
@@ -29,6 +31,8 @@ User Function zExe279()
     FWAlertInfo("O conteúdo do parâmetro é: " + cConteudo, "Teste GetMV e SuperGetMV")
  
     FWRestArea(aArea)
+
+      RpcClearEnv()
 Return
     
-Return return_var
+
